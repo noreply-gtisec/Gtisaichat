@@ -1,0 +1,63 @@
+'use client';
+
+import { GoogleIcon } from './GoogleLoginModal';
+
+export default function Navbar({
+  mobileMenuOpen,
+  setMobileMenuOpen,
+  user,
+  onOpenGoogleLogin,
+  onLogout
+}) {
+  return (
+    <header className="site-header">
+      <div className="container nav-container">
+        <a href="#" className="brand-wordmark">
+          GTIS <span className="brand-dot" aria-hidden="true"></span>
+        </a>
+
+        <nav>
+          <ul className={`nav-links ${mobileMenuOpen ? 'mobile-open' : ''}`}>
+            <li><a href="#services" className="nav-link" onClick={() => setMobileMenuOpen(false)}>SERVICES</a></li>
+            <li><a href="#work" className="nav-link" onClick={() => setMobileMenuOpen(false)}>METRICS</a></li>
+            <li><a href="#process" className="nav-link" onClick={() => setMobileMenuOpen(false)}>PROCESS</a></li>
+            <li><a href="#faq" className="nav-link" onClick={() => setMobileMenuOpen(false)}>FAQ</a></li>
+          </ul>
+        </nav>
+
+        <div className="nav-actions">
+          {user ? (
+            <div className="user-profile-badge">
+              <span className="user-avatar">{user.name.charAt(0)}</span>
+              <span>{user.name}</span>
+              <button onClick={onLogout} className="btn-logout" title="Sign Out">
+                LOGOUT
+              </button>
+            </div>
+          ) : (
+            <button
+              onClick={onOpenGoogleLogin}
+              className="btn btn-google"
+              style={{ height: '40px', fontSize: '12px', padding: '0 16px' }}
+            >
+              <GoogleIcon />
+              <span>SIGN IN WITH GOOGLE</span>
+            </button>
+          )}
+
+          <a href="#audit" className="btn btn-primary-blue" style={{ height: '40px', fontSize: '13px', padding: '0 18px' }}>
+            BOOK A CALL ▸
+          </a>
+
+          <button
+            className="mobile-menu-toggle"
+            onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+            aria-label="Toggle Navigation Menu"
+          >
+            {mobileMenuOpen ? 'CLOSE' : 'MENU'}
+          </button>
+        </div>
+      </div>
+    </header>
+  );
+}
