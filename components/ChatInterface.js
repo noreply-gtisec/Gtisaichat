@@ -318,13 +318,7 @@ export default function ChatInterface({ user, onLogout, onBackToLanding }) {
             <span className="active-model-indicator">
               ⚡ ACTIVE: {targetModel}
             </span>
-            <button
-              onClick={onBackToLanding}
-              className="btn btn-sm-outline"
-              style={{ color: 'var(--text-off-black)', borderColor: 'var(--border-ash)' }}
-            >
-              WEBSITE ▸
-            </button>
+            
           </div>
         </div>
 

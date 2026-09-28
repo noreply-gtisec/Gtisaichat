@@ -1,6 +1,8 @@
 'use client';
 
 import { useState } from 'react';
+import Image from 'next/image';
+import Link from 'next/link';
 
 export default function ChatSidebar({
   collapsed,
@@ -22,9 +24,15 @@ export default function ChatSidebar({
   return (
     <aside className={`chat-sidebar ${collapsed ? 'collapsed' : ''}`}>
       <div className="sidebar-header">
-        <a href="#" onClick={onBackToLanding} className="brand-wordmark" style={{ fontSize: '16px' }}>
-          GTIS <span className="brand-dot" aria-hidden="true"></span>
-        </a>
+        <Link href="/" className="brand-wordmark" aria-label="GTIS home">
+  <Image
+    src="/logo.png"
+    alt="GTIS"
+    width={100}
+    height={50}
+    priority
+  />
+</Link>
         <button
           onClick={onNewChat}
           className="btn-new-chat"
