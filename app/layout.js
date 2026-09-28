@@ -11,6 +11,11 @@ export const metadata = {
   description: 'Precision AI cybersecurity and managed threat intelligence platform. Autonomous SOC monitoring, zero-trust vulnerability defense, cloud hardening, and continuous compliance.',
   keywords: 'cybersecurity, GTIS AI, threat detection, zero trust, SOC monitoring, managed security, cloud hardening, compliance automation',
   authors: [{ name: 'GTIS Cybersecurity' }],
+  icons: {
+    icon: '/icon.png',
+    shortcut: '/icon.png',
+    apple: '/icon.png',
+  },
   openGraph: {
     title: 'GTIS — Enterprise AI Cybersecurity & Threat Defense Engine',
     description: 'Precision AI cybersecurity and managed threat intelligence platform typesetting threat math like a technical manual.',

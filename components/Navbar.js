@@ -1,6 +1,8 @@
 'use client';
 
 import { GoogleIcon } from './GoogleLoginModal';
+import Image from 'next/image';
+import Link from 'next/link';
 
 export default function Navbar({
   mobileMenuOpen,
@@ -12,9 +14,15 @@ export default function Navbar({
   return (
     <header className="site-header">
       <div className="container nav-container">
-        <a href="#" className="brand-wordmark">
-          GTIS <span className="brand-dot" aria-hidden="true"></span>
-        </a>
+        <Link href="/" className="brand-wordmark" aria-label="GTIS home">
+  <Image
+    src="/logo.png"
+    alt="GTIS"
+    width={100}
+    height={50}
+    priority
+  />
+</Link>
 
         <nav>
           <ul className={`nav-links ${mobileMenuOpen ? 'mobile-open' : ''}`}>
@@ -41,11 +49,11 @@ export default function Navbar({
               style={{ height: '40px', fontSize: '12px', padding: '0 16px' }}
             >
               <GoogleIcon />
-              <span>SIGN IN WITH GOOGLE</span>
+              <span>Login</span>
             </button>
           )}
 
-          <a href="#audit" className="btn btn-primary-blue" style={{ height: '40px', fontSize: '13px', padding: '0 18px' }}>
+          <a href="https://gtis.ai/contact" className="btn btn-primary-blue" style={{ height: '40px', fontSize: '13px', padding: '0 18px' }}>
             BOOK A CALL ▸
           </a>
 
