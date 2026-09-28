@@ -26,12 +26,13 @@ export default function GoogleLoginModal({ isOpen, onClose, onGoogleSignIn }) {
         </span>
 
         <h3 className="card-title" style={{ fontSize: '28px', marginBottom: '12px' }}>
-          Sign in to GTIS Security Portal
+          Sign in to Zyra
         </h3>
 
         <p className="mono-body" style={{ marginBottom: '28px', fontSize: '15px' }}>
-          Access your threat intelligence dashboard, continuous compliance audits, and real-time SOC monitoring.
-        </p>
+Curious about AI? Start here.
+Explore AI with security and compliance built in.
+</p>
 
         <button
           onClick={onGoogleSignIn}

@@ -10,12 +10,11 @@ export default function HeroSection({ user, onOpenGoogleLogin }) {
        
 
         <h1 className="hero-title">
-          Cybersecurity that measures what protects.
-        </h1>
+                  Meet Zyra, your GTIS AI security assistant.</h1>
 
-        <p className="mono-subtext" style={{ maxWidth: '720px' }}>
-          We engineer precision AI threat detection and zero-trust systems for enterprise infrastructure. Zero false alarms, continuous containment, and verified risk math.
-        </p>
+        <p className="mono-subtext" style={{ maxWidth: '800px' }}>
+         Ask anything, from everyday questions to threats, vulnerabilities, compliance, and zero-trust architecture.
+          Security is what we do best. Built on GTIS's precision threat detection and verified risk math, so you get clear, reliable answers instead of noise.                    </p>
 
         <div className="hero-ctas">
           
