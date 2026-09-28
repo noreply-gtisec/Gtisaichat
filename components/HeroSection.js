@@ -7,9 +7,7 @@ export default function HeroSection({ user, onOpenGoogleLogin }) {
     <section className="hero-section">
       <div className="hero-glow-wash" aria-hidden="true"></div>
       <div className="container hero-content">
-        <span className="mono-small" style={{ letterSpacing: '0.05em', color: 'var(--text-smoke)' }}>
-          GTIS CYBERSECURITY 
-        </span>
+       
 
         <h1 className="hero-title">
           Cybersecurity that measures what protects.
@@ -20,9 +18,7 @@ export default function HeroSection({ user, onOpenGoogleLogin }) {
         </p>
 
         <div className="hero-ctas">
-          <a href="#audit" className="btn btn-primary-blue">
-            BOOK A FREE CYBER AUDIT ▸
-          </a>
+          
           {!user ? (
             <button onClick={onOpenGoogleLogin} className="btn btn-google">
               <GoogleIcon />

@@ -51,8 +51,8 @@ Respond with high precision, clear technical depth, and clean markdown code snip
 
     if (!response.ok) {
       const errText = await response.text();
-      console.error('OpenRouter API Error:', errText);
-      return NextResponse.json({ error: `OpenRouter API Error (${response.status}): ${errText}` }, { status: response.status });
+      console.error(' Error:', errText);
+      return NextResponse.json({ error: ` API Error (${response.status}): ${errText}` }, { status: response.status });
     }
 
     return new Response(response.body, {

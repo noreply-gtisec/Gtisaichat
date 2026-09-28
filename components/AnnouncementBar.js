@@ -7,10 +7,9 @@ export default function AnnouncementBar({ show, onClose }) {
     <div className="announcement-bar" role="banner">
       <div className="announcement-content">
         <span className="announcement-text">
-          FREE 30-MINUTE CYBERSECURITY & THREAT AUDIT FOR NEW CLIENTS
-        </span>
-        <a href="#audit" className="btn btn-sm-outline">
-          CLAIM AUDIT ▸
+        GTIS ASSISTANT · THREAT DETECTION · ZERO-TRUST · RISK ANALYSIS       </span>
+        <a href="https://gtis.ai/" className="btn btn-sm-outline">
+          Explore More ▸
         </a>
       </div>
       <button

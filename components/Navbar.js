@@ -24,14 +24,7 @@ export default function Navbar({
   />
 </Link>
 
-        <nav>
-          <ul className={`nav-links ${mobileMenuOpen ? 'mobile-open' : ''}`}>
-            <li><a href="#services" className="nav-link" onClick={() => setMobileMenuOpen(false)}>SERVICES</a></li>
-            <li><a href="#work" className="nav-link" onClick={() => setMobileMenuOpen(false)}>METRICS</a></li>
-            <li><a href="#process" className="nav-link" onClick={() => setMobileMenuOpen(false)}>PROCESS</a></li>
-            <li><a href="#faq" className="nav-link" onClick={() => setMobileMenuOpen(false)}>FAQ</a></li>
-          </ul>
-        </nav>
+       
 
         <div className="nav-actions">
           {user ? (
