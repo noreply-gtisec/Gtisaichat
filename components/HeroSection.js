@@ -8,7 +8,7 @@ export default function HeroSection({ user, onOpenGoogleLogin }) {
       <div className="hero-glow-wash" aria-hidden="true"></div>
       <div className="container hero-content">
         <span className="mono-small" style={{ letterSpacing: '0.05em', color: 'var(--text-smoke)' }}>
-          GTIS CYBERSECURITY MANUAL • VOL. 01
+          GTIS CYBERSECURITY 
         </span>
 
         <h1 className="hero-title">
