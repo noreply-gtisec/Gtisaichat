@@ -117,12 +117,12 @@ export default function ChatInterface({ user, onLogout, onBackToLanding }) {
   const activeChat = chats.find((c) => c.id === activeChatId);
   const messages = activeChat ? activeChat.messages : [];
 
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  const scrollToBottom = (smooth = false) => {
+    messagesEndRef.current?.scrollIntoView({ behavior: smooth ? 'smooth' : 'auto' });
   };
 
   useEffect(() => {
-    scrollToBottom();
+    scrollToBottom(!isStreaming);
   }, [messages, isStreaming]);
 
   const handleNewChat = () => {
@@ -172,7 +172,12 @@ export default function ChatInterface({ user, onLogout, onBackToLanding }) {
     if (attachments && attachments.length > 0) {
       attachments.forEach((att) => {
         if (!att.isImage && att.textContent) {
-          fullTextPrompt += `\n\n[Attached Document: ${att.name}]\n\`\`\`\n${att.textContent}\n\`\`\``;
+          if (att.isPdf) {
+            const pageInfo = att.pageCount ? ` (${att.pageCount} pages)` : '';
+            fullTextPrompt += `\n\n[Attached PDF Document: ${att.name}${pageInfo}]\n\`\`\`\n${att.textContent}\n\`\`\``;
+          } else {
+            fullTextPrompt += `\n\n[Attached Document: ${att.name}]\n\`\`\`\n${att.textContent}\n\`\`\``;
+          }
         }
       });
     }
@@ -220,10 +225,18 @@ export default function ChatInterface({ user, onLogout, onBackToLanding }) {
     try {
       abortControllerRef.current = new AbortController();
 
-      const historyMessages = (activeChat ? activeChat.messages : []).map((m) => ({
-        role: m.role,
-        content: m.content,
-      }));
+      // Keep recent conversation history (last 10 turns) with a safety cap on past document text
+      const recentHistory = (activeChat ? activeChat.messages : []).slice(-10);
+      const historyMessages = recentHistory.map((m) => {
+        let content = m.content;
+        if (typeof content === 'string' && content.length > 8000) {
+          content = content.substring(0, 8000) + '\n\n[... Previous message context truncated to preserve token limit ...]';
+        }
+        return {
+          role: m.role,
+          content,
+        };
+      });
 
       // Support multimodal OpenRouter payload for image attachments
       const imageAtts = attachments ? attachments.filter((a) => a.isImage && a.dataUrl) : [];
@@ -261,6 +274,8 @@ export default function ChatInterface({ user, onLogout, onBackToLanding }) {
         size: att.size,
         type: att.type,
         isImage: att.isImage,
+        isPdf: att.isPdf || false,
+        pageCount: att.pageCount || null,
         driveUrl: att.driveUrl || null,
         driveFileId: att.driveFileId || null,
       }));
@@ -287,8 +302,42 @@ export default function ChatInterface({ user, onLogout, onBackToLanding }) {
       let accumulatedContent = '';
 
       let buffer = '';
+      let lastRenderTime = 0;
+      const RENDER_THROTTLE_MS = 60; // 60ms batching prevents UI thread stutter
+
+      const updateAssistantMessage = (content) => {
+        setChats((prev) =>
+          prev.map((c) => {
+            if (c.id === currentChatId) {
+              return {
+                ...c,
+                messages: c.messages.map((m) =>
+                  m.id === assistantMsgId ? { ...m, content } : m
+                ),
+              };
+            }
+            return c;
+          })
+        );
+      };
+
       while (true) {
-        const { value, done } = await reader.read();
+        // Stall watchdog: if the network dies mid-stream, reader.read() never
+        // resolves AND never rejects — without this the UI hangs at "streaming" forever
+        let stallTimer;
+        const stallGuard = new Promise((_, reject) => {
+          stallTimer = setTimeout(
+            () => reject(new Error('No response from the AI for 60s — connection stalled. Check your network and retry.')),
+            60000
+          );
+        });
+        let chunk;
+        try {
+          chunk = await Promise.race([reader.read(), stallGuard]);
+        } finally {
+          clearTimeout(stallTimer);
+        }
+        const { value, done } = chunk;
         if (done) break;
 
         buffer += decoder.decode(value, { stream: true });
@@ -307,20 +356,11 @@ export default function ChatInterface({ user, onLogout, onBackToLanding }) {
               const delta = json.choices?.[0]?.delta?.content || '';
               if (delta) {
                 accumulatedContent += delta;
-
-                setChats((prev) =>
-                  prev.map((c) => {
-                    if (c.id === currentChatId) {
-                      return {
-                        ...c,
-                        messages: c.messages.map((m) =>
-                          m.id === assistantMsgId ? { ...m, content: accumulatedContent } : m
-                        ),
-                      };
-                    }
-                    return c;
-                  })
-                );
+                const now = Date.now();
+                if (now - lastRenderTime > RENDER_THROTTLE_MS) {
+                  lastRenderTime = now;
+                  updateAssistantMessage(accumulatedContent);
+                }
               }
             } catch (e) {
               // Parse error ignored
@@ -328,6 +368,9 @@ export default function ChatInterface({ user, onLogout, onBackToLanding }) {
           }
         }
       }
+
+      // Ensure final full text is committed to UI
+      updateAssistantMessage(accumulatedContent);
 
       // Save completed AI assistant response to MongoDB
       if (accumulatedContent) {

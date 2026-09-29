@@ -1,31 +1,12 @@
 import { NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
 import clientPromise from '../../../lib/mongodb';
 import { decryptApiKey } from '../../../lib/crypto';
-
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
+import { getAuthUser } from '../../../lib/authServer';
 
 export async function POST(req) {
   try {
-    // 1. Read Authorization header (Bearer JWT)
-    const authHeader = req.headers.get('authorization');
-    let authenticatedUser = null;
-
-    if (authHeader && authHeader.startsWith('Bearer ')) {
-      const jwtToken = authHeader.substring(7);
-      if (supabaseUrl && supabaseAnonKey && supabaseUrl !== 'https://placeholder.supabase.co') {
-        try {
-          const supabase = createClient(supabaseUrl, supabaseAnonKey);
-          const { data: { user }, error } = await supabase.auth.getUser(jwtToken);
-          if (!error && user) {
-            authenticatedUser = user;
-          }
-        } catch (e) {
-          console.warn('JWT Verification error:', e.message);
-        }
-      }
-    }
+    // 1. Authenticate user via shared auth helper
+    const authenticatedUser = await getAuthUser(req);
 
     const { chatId, model, messages, attachments } = await req.json();
 
@@ -73,15 +54,9 @@ export async function POST(req) {
           contentString = rawContent.text;
         }
 
-        await db.collection('messages').insertOne({
-          chatId: activeChatId,
-          userId: userId,
-          userEmail: userEmail,
-          role: 'user',
-          content: contentString,
-          attachments: attachments || [],
-          createdAt: new Date(),
-        });
+        const savedContent = typeof contentString === 'string' && contentString.length > 100000
+          ? contentString.substring(0, 100000) + '\n\n[... Document truncated for storage ...]'
+          : contentString;
 
         let titleString = contentString || 'New Audit';
         if (typeof rawContent === 'string') {
@@ -93,20 +68,31 @@ export async function POST(req) {
           titleString = rawContent.text;
         }
 
-        // Update Chat metadata
-        await db.collection('chats').updateOne(
-          { _id: activeChatId },
-          {
-            $set: {
-              userId: userId,
-              userEmail: userEmail,
-              title: String(titleString).slice(0, 40),
-              updatedAt: new Date(),
+        // Run MongoDB writes concurrently to prevent delaying stream startup
+        await Promise.all([
+          db.collection('messages').insertOne({
+            chatId: activeChatId,
+            userId: userId,
+            userEmail: userEmail,
+            role: 'user',
+            content: savedContent,
+            attachments: attachments || [],
+            createdAt: new Date(),
+          }),
+          db.collection('chats').updateOne(
+            { _id: activeChatId },
+            {
+              $set: {
+                userId: userId,
+                userEmail: userEmail,
+                title: String(titleString).slice(0, 40),
+                updatedAt: new Date(),
+              },
+              $setOnInsert: { createdAt: new Date() },
             },
-            $setOnInsert: { createdAt: new Date() },
-          },
-          { upsert: true }
-        );
+            { upsert: true }
+          ),
+        ]);
       }
     } catch (dbErr) {
       console.warn('MongoDB chat log warning (non-fatal):', dbErr.message);
@@ -120,7 +106,11 @@ export async function POST(req) {
     }
 
     // Map model selection to active OpenRouter model ID
-    let openRouterModel = model || 'anthropic/claude-3.5-sonnet:beta';
+    let openRouterModel = model || 'openai/gpt-6-luna-pro';
+    // OpenRouter :batch models can only be used with asynchronous Batch API, not /chat/completions
+    if (openRouterModel.includes(':batch')) {
+      openRouterModel = openRouterModel.replace(':batch', '');
+    }
     if (model === 'anthropic/claude-3.5-sonnet' || model === 'gtis-cyber-core') {
       openRouterModel = 'anthropic/claude-3.5-sonnet:beta';
     }
@@ -135,6 +125,8 @@ Respond with high precision, clear technical depth, and clean markdown code snip
 
     const formattedMessages = [systemPrompt, ...messages];
 
+    // Bound the upstream call: undici fetch has no default timeout, so a DNS/network
+    // stall against openrouter.ai would hang this request forever
     const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
       method: 'POST',
       headers: {
@@ -148,6 +140,7 @@ Respond with high precision, clear technical depth, and clean markdown code snip
         messages: formattedMessages,
         stream: true,
       }),
+      signal: AbortSignal.timeout(120000),
     });
 
     if (!response.ok) {
@@ -165,6 +158,9 @@ Respond with high precision, clear technical depth, and clean markdown code snip
     });
   } catch (error) {
     console.error('Error in /api/send-message route:', error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    const msg = error.name === 'TimeoutError'
+      ? 'The AI provider did not respond within 120s (network timeout). Please try again.'
+      : error.message;
+    return NextResponse.json({ error: msg }, { status: 500 });
   }
 }

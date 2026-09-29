@@ -1,26 +1,6 @@
 import { NextResponse } from 'next/server';
 import clientPromise from '../../../lib/mongodb';
-import { createClient } from '@supabase/supabase-js';
-
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
-
-async function getAuthUser(req) {
-  const authHeader = req.headers.get('authorization');
-  if (authHeader && authHeader.startsWith('Bearer ')) {
-    const jwtToken = authHeader.substring(7);
-    if (supabaseUrl && supabaseAnonKey && supabaseUrl !== 'https://placeholder.supabase.co') {
-      try {
-        const supabase = createClient(supabaseUrl, supabaseAnonKey);
-        const { data: { user }, error } = await supabase.auth.getUser(jwtToken);
-        if (!error && user) return user;
-      } catch (e) {
-        console.warn('JWT error:', e.message);
-      }
-    }
-  }
-  return null;
-}
+import { getAuthUser } from '../../../lib/authServer';
 
 // POST /api/save-message - Save a single message (user or assistant) to MongoDB
 export async function POST(req) {

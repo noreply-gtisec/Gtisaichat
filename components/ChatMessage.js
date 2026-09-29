@@ -155,18 +155,29 @@ export default function ChatMessage({ message, onRegenerate, onCopy }) {
                     />
                   </a>
                 ) : att.driveFileId ? (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxWidth: '350px' }}>
-                    <div style={{ fontSize: '12px', fontWeight: '500', color: 'var(--text-smoke)' }}>
-                      📄 {att.name}
-                    </div>
-                    <iframe
-                      src={`https://drive.google.com/file/d/${att.driveFileId}/preview`}
-                      width="350"
-                      height="240"
-                      style={{ border: '1px solid var(--border-ash)', borderRadius: '12px' }}
-                      allow="autoplay"
-                    ></iframe>
-                  </div>
+                  <a
+                    href={`https://drive.google.com/file/d/${att.driveFileId}/view`}
+                    target="_blank"
+                    rel="noreferrer"
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '10px',
+                      padding: '8px 14px',
+                      borderRadius: '10px',
+                      backgroundColor: 'rgba(255, 255, 255, 0.05)',
+                      border: '1px solid var(--border-ash)',
+                      color: 'var(--cta-lake-blue)',
+                      textDecoration: 'none',
+                      fontSize: '12px',
+                      transition: 'background 0.2s',
+                    }}
+                  >
+                    <span style={{ fontSize: '16px' }}>📄</span>
+                    <span style={{ fontWeight: '500' }}>{att.name}</span>
+                    {att.size && <span style={{ opacity: 0.6, fontSize: '11px' }}>({att.size})</span>}
+                    <span style={{ marginLeft: 'auto', fontSize: '11px', opacity: 0.8 }}>Open ↗</span>
+                  </a>
                 ) : att.driveUrl ? (
                   <a
                     href={att.driveUrl}

@@ -1,26 +1,6 @@
 import { NextResponse } from 'next/server';
 import clientPromise from '../../../lib/mongodb';
-import { createClient } from '@supabase/supabase-js';
-
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
-
-async function getAuthUser(req) {
-  const authHeader = req.headers.get('authorization');
-  if (authHeader && authHeader.startsWith('Bearer ')) {
-    const jwtToken = authHeader.substring(7);
-    if (supabaseUrl && supabaseAnonKey && supabaseUrl !== 'https://placeholder.supabase.co') {
-      try {
-        const supabase = createClient(supabaseUrl, supabaseAnonKey);
-        const { data: { user }, error } = await supabase.auth.getUser(jwtToken);
-        if (!error && user) return user;
-      } catch (e) {
-        console.warn('JWT error:', e.message);
-      }
-    }
-  }
-  return null;
-}
+import { getAuthUser } from '../../../lib/authServer';
 
 // GET /api/chat-history - Fetch all user chats or messages for a specific chatId (?chatId=xxx)
 export async function GET(req) {
@@ -44,19 +24,21 @@ export async function GET(req) {
     const chatId = searchParams.get('chatId');
 
     if (chatId) {
-      // Fetch messages for a specific chat thread (match by chatId + user identity)
+      // Fetch messages for a specific chat thread (limit to 200 most recent)
       const messages = await db
         .collection('messages')
         .find({ chatId: chatId, ...userQuery })
         .sort({ createdAt: 1 })
+        .limit(200)
         .toArray();
       return NextResponse.json({ chatId, messages });
     } else {
-      // Fetch all chat threads for this user
+      // Fetch the 50 most recent chat threads for this user
       const chats = await db
         .collection('chats')
         .find(userQuery)
         .sort({ updatedAt: -1 })
+        .limit(50)
         .toArray();
       return NextResponse.json({ chats });
     }

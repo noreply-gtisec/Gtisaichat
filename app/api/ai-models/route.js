@@ -2,8 +2,8 @@ import { NextResponse } from 'next/server';
 
 export async function GET() {
   const customModels = [
-    { id: 'openai/gpt-6-luna', name: 'OpenAI: GPT-6 Luna', provider: 'OpenAI' },
     { id: 'openai/gpt-6-luna-pro', name: 'OpenAI: GPT-6 Luna Pro', provider: 'OpenAI' },
+    { id: 'openai/gpt-6-luna', name: 'OpenAI: GPT-6 Luna', provider: 'OpenAI' },
     { id: 'deepseek/deepseek-v4.1-flash', name: 'DeepSeek: DeepSeek V4.1 Flash', provider: 'DeepSeek' },
     { id: 'ibm-granite/granite-4.2-8b', name: 'IBM: Granite 4.2 8B', provider: 'IBM' },
     { id: 'upstage/solar-mini-4', name: 'Upstage: Solar Mini 4', provider: 'Upstage' },

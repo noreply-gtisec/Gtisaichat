@@ -1,11 +1,7 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
-import { createClient } from '@supabase/supabase-js';
-
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
-const supabase = createClient(supabaseUrl, supabaseAnonKey);
+import { supabase } from '../lib/supabaseClient';
 
 export default function ChatInput({ onSendMessage, isStreaming, onStopStream }) {
   const [input, setInput] = useState('');
@@ -42,16 +38,22 @@ export default function ChatInput({ onSendMessage, isStreaming, onStopStream }) 
     for (const file of files) {
       setUploadFileName(file.name);
       const isImage = file.type.startsWith('image/');
+      const isPdf = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
+      const isBinaryDoc = isPdf || file.name.toLowerCase().endsWith('.doc') || file.name.toLowerCase().endsWith('.docx');
       let dataUrl = null;
       let textContent = null;
+      let pageCount = null;
 
       if (isImage) {
+        // Read image as base64 data URL for preview and multimodal API
         dataUrl = await new Promise((resolve) => {
           const reader = new FileReader();
           reader.onload = (event) => resolve(event.target.result);
           reader.readAsDataURL(file);
         });
-      } else {
+      } else if (!isBinaryDoc) {
+        // Only readAsText for actual text-based files (.txt, .csv, .json, .py, .js, etc.)
+        // PDFs and .doc/.docx are binary — readAsText produces garbage
         textContent = await new Promise((resolve) => {
           const reader = new FileReader();
           reader.onload = (event) => resolve(event.target.result);
@@ -61,27 +63,54 @@ export default function ChatInput({ onSendMessage, isStreaming, onStopStream }) 
 
       let driveUrl = null;
       let driveFileId = null;
+      let uploadError = null;
 
-      // Upload to Google Drive in the background securely
+      // Upload to server — handles Google Drive upload + PDF text extraction
       try {
         const formData = new FormData();
         formData.append('file', file);
+
+        // Abort on the client too so the UI never hangs forever
+        const controller = new AbortController();
+        const abortTimer = setTimeout(() => controller.abort(), 120000);
 
         const res = await fetch('/api/upload', {
           method: 'POST',
           headers,
           body: formData,
-        });
+          signal: controller.signal,
+        }).finally(() => clearTimeout(abortTimer));
 
         if (res.ok) {
           const data = await res.json();
-          if (data.success && data.file) {
-            driveUrl = data.file.fileUrl || data.file.downloadUrl;
-            driveFileId = data.file.driveFileId;
+          if (data.success) {
+            // Pick up Google Drive info if available
+            if (data.file) {
+              driveUrl = data.file.fileUrl || data.file.downloadUrl;
+              driveFileId = data.file.driveFileId;
+            }
+            // Use server-extracted text for PDFs (clean text from pdf-parse)
+            if (isPdf && data.extractedText) {
+              textContent = data.extractedText;
+              pageCount = data.pageCount || null;
+            }
+          } else {
+            uploadError = data.error || 'Upload failed on server';
           }
+        } else {
+          uploadError = `Upload failed (HTTP ${res.status})`;
+          try {
+            const errData = await res.json();
+            if (errData.error) uploadError = errData.error;
+          } catch { /* non-JSON response */ }
         }
       } catch (err) {
-        console.warn('Google Drive background upload warning:', err.message);
+        uploadError = err.name === 'AbortError' ? 'Upload timed out after 120s' : `Upload error: ${err.message}`;
+        console.warn('File upload warning:', err.message);
+      }
+
+      if (uploadError) {
+        console.warn(`Upload issue for ${file.name}:`, uploadError);
       }
 
       setAttachments((prev) => [
@@ -92,10 +121,13 @@ export default function ChatInput({ onSendMessage, isStreaming, onStopStream }) 
           size: (file.size / 1024).toFixed(1) + ' KB',
           type: file.type,
           isImage,
+          isPdf,
           dataUrl,
           textContent,
+          pageCount,
           driveUrl,
           driveFileId,
+          uploadError,
         },
       ]);
     }
@@ -158,19 +190,25 @@ export default function ChatInput({ onSendMessage, isStreaming, onStopStream }) 
                   color: 'var(--cta-lake-blue)',
                 }}
               >
-                {att.isImage ? (
+                {att.uploadError ? (
+                  <span title={att.uploadError}>⚠️</span>
+                ) : att.isImage ? (
                   <img
                     src={att.dataUrl}
                     alt={att.name}
                     style={{ width: '20px', height: '20px', borderRadius: '4px', objectFit: 'cover' }}
                   />
+                ) : att.isPdf ? (
+                  <span>📕</span>
                 ) : (
                   <span>📄</span>
                 )}
                 <span style={{ maxWidth: '140px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                   {att.name}
                 </span>
-                <span style={{ fontSize: '10px', opacity: 0.7 }}>({att.size})</span>
+                <span style={{ fontSize: '10px', opacity: 0.7 }}>
+                  ({att.size}{att.pageCount ? ` · ${att.pageCount} pg` : ''})
+                </span>
                 <button
                   type="button"
                   onClick={() => handleRemoveAttachment(att.id)}
