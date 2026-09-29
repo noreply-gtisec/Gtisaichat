@@ -26,8 +26,11 @@ async function getAuthUser(req) {
 export async function POST(req) {
   try {
     const user = await getAuthUser(req);
-    const userId = user ? user.id : 'anonymous_user';
-    const userEmail = user ? user.email : null;
+    if (!user) {
+      return NextResponse.json({ error: 'Unauthorized: You must be logged in to save messages.' }, { status: 401 });
+    }
+    const userId = user.id;
+    const userEmail = user.email;
 
     const { chatId, role, content, attachments } = await req.json();
 

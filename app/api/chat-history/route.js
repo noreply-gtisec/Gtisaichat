@@ -26,8 +26,11 @@ async function getAuthUser(req) {
 export async function GET(req) {
   try {
     const user = await getAuthUser(req);
-    const userId = user ? user.id : 'anonymous_user';
-    const userEmail = user ? user.email : null;
+    if (!user) {
+      return NextResponse.json({ error: 'Unauthorized: You must be logged in to view chat history.' }, { status: 401 });
+    }
+    const userId = user.id;
+    const userEmail = user.email;
 
     // Build query that matches by userId OR userEmail for maximum compatibility
     const userQuery = userEmail

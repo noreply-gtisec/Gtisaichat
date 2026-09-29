@@ -1,6 +1,11 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
+import { createClient } from '@supabase/supabase-js';
+
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
+const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
+const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
 export default function ChatInput({ onSendMessage, isStreaming, onStopStream }) {
   const [input, setInput] = useState('');
@@ -29,6 +34,10 @@ export default function ChatInput({ onSendMessage, isStreaming, onStopStream }) 
     if (files.length === 0) return;
 
     setUploading(true);
+    
+    // Get auth token for secure upload
+    const { data: { session } } = await supabase.auth.getSession();
+    const headers = session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {};
 
     for (const file of files) {
       setUploadFileName(file.name);
@@ -53,13 +62,14 @@ export default function ChatInput({ onSendMessage, isStreaming, onStopStream }) 
       let driveUrl = null;
       let driveFileId = null;
 
-      // Upload to Google Drive in the background
+      // Upload to Google Drive in the background securely
       try {
         const formData = new FormData();
         formData.append('file', file);
 
         const res = await fetch('/api/upload', {
           method: 'POST',
+          headers,
           body: formData,
         });
 

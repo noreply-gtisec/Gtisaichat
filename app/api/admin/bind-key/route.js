@@ -4,8 +4,14 @@ import { encryptApiKey } from '../../../../lib/crypto';
 
 // POST /api/admin/bind-key
 // Body: { userId or email, apiKey }
+// Header: x-admin-secret: <your_admin_secret>
 export async function POST(req) {
   try {
+    const adminSecret = req.headers.get('x-admin-secret');
+    if (!process.env.ADMIN_SECRET || adminSecret !== process.env.ADMIN_SECRET) {
+      return NextResponse.json({ error: 'Unauthorized: Invalid Admin Secret' }, { status: 401 });
+    }
+
     const { userId, email, apiKey } = await req.json();
 
     if ((!userId && !email) || !apiKey) {

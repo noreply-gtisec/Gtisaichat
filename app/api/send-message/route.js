@@ -33,8 +33,12 @@ export async function POST(req) {
       return NextResponse.json({ error: 'Messages array is required' }, { status: 400 });
     }
 
-    const userId = authenticatedUser ? authenticatedUser.id : 'anonymous_user';
-    const userEmail = authenticatedUser ? authenticatedUser.email : null;
+    if (!authenticatedUser) {
+      return NextResponse.json({ error: 'Unauthorized: You must be logged in to send messages.' }, { status: 401 });
+    }
+
+    const userId = authenticatedUser.id;
+    const userEmail = authenticatedUser.email;
 
     // 2. Lookup per-user API Key from MongoDB (no fallback — each user must have their own key)
     let effectiveApiKey = null;

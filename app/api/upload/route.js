@@ -1,8 +1,34 @@
 import { NextResponse } from 'next/server';
 import { uploadFileToDrive } from '../../../lib/gdrive';
+import { createClient } from '@supabase/supabase-js';
+
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
+const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
+
+async function getAuthUser(req) {
+  const authHeader = req.headers.get('authorization');
+  if (authHeader && authHeader.startsWith('Bearer ')) {
+    const jwtToken = authHeader.substring(7);
+    if (supabaseUrl && supabaseAnonKey && supabaseUrl !== 'https://placeholder.supabase.co') {
+      try {
+        const supabase = createClient(supabaseUrl, supabaseAnonKey);
+        const { data: { user }, error } = await supabase.auth.getUser(jwtToken);
+        if (!error && user) return user;
+      } catch (e) {
+        console.warn('JWT error:', e.message);
+      }
+    }
+  }
+  return null;
+}
 
 export async function POST(req) {
   try {
+    const user = await getAuthUser(req);
+    if (!user) {
+      return NextResponse.json({ error: 'Unauthorized: You must be logged in to upload files.' }, { status: 401 });
+    }
+
     const formData = await req.formData();
     const file = formData.get('file');
 
