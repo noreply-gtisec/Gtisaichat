@@ -260,6 +260,16 @@ export default function ChatInterface({ user, onLogout, onBackToLanding }) {
         headers['Authorization'] = `Bearer ${accessToken}`;
       }
 
+      // Strip large data (dataUrl, textContent) from attachments before sending to backend
+      const attachmentMeta = attachments.map((att) => ({
+        name: att.name,
+        size: att.size,
+        type: att.type,
+        isImage: att.isImage,
+        driveUrl: att.driveUrl || null,
+        driveFileId: att.driveFileId || null,
+      }));
+
       const response = await fetch('/api/send-message', {
         method: 'POST',
         headers,
@@ -267,6 +277,7 @@ export default function ChatInterface({ user, onLogout, onBackToLanding }) {
           chatId: currentChatId,
           model: targetModel,
           messages: apiMessages,
+          attachments: attachmentMeta,
         }),
         signal: abortControllerRef.current.signal,
       });
@@ -280,36 +291,42 @@ export default function ChatInterface({ user, onLogout, onBackToLanding }) {
       const decoder = new TextDecoder();
       let accumulatedContent = '';
 
+      let buffer = '';
       while (true) {
         const { value, done } = await reader.read();
         if (done) break;
 
-        const chunkText = decoder.decode(value, { stream: true });
-        const lines = chunkText.split('\n');
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        
+        // Keep the last partial line in the buffer
+        buffer = lines.pop() || '';
 
         for (const line of lines) {
-          if (line.startsWith('data: ')) {
-            const dataStr = line.replace('data: ', '').trim();
-            if (dataStr === '[DONE]') break;
+          if (line.trim().startsWith('data: ')) {
+            const dataStr = line.trim().replace('data: ', '').trim();
+            if (dataStr === '[DONE]') continue;
 
             try {
               const json = JSON.parse(dataStr);
               const delta = json.choices?.[0]?.delta?.content || '';
-              accumulatedContent += delta;
+              if (delta) {
+                accumulatedContent += delta;
 
-              setChats((prev) =>
-                prev.map((c) => {
-                  if (c.id === currentChatId) {
-                    return {
-                      ...c,
-                      messages: c.messages.map((m) =>
-                        m.id === assistantMsgId ? { ...m, content: accumulatedContent } : m
-                      ),
-                    };
-                  }
-                  return c;
-                })
-              );
+                setChats((prev) =>
+                  prev.map((c) => {
+                    if (c.id === currentChatId) {
+                      return {
+                        ...c,
+                        messages: c.messages.map((m) =>
+                          m.id === assistantMsgId ? { ...m, content: accumulatedContent } : m
+                        ),
+                      };
+                    }
+                    return c;
+                  })
+                );
+              }
             } catch (e) {
               // Parse error ignored
             }
@@ -319,15 +336,22 @@ export default function ChatInterface({ user, onLogout, onBackToLanding }) {
 
       // Save completed AI assistant response to MongoDB
       if (accumulatedContent) {
-        fetch('/api/save-message', {
-          method: 'POST',
-          headers,
-          body: JSON.stringify({
-            chatId: currentChatId,
-            role: 'assistant',
-            content: accumulatedContent,
-          }),
-        }).catch((e) => console.warn('Failed to save assistant response:', e));
+        try {
+          const saveRes = await fetch('/api/save-message', {
+            method: 'POST',
+            headers,
+            body: JSON.stringify({
+              chatId: currentChatId,
+              role: 'assistant',
+              content: accumulatedContent,
+            }),
+          });
+          if (!saveRes.ok) {
+            console.error('Failed to save AI response:', await saveRes.text());
+          }
+        } catch (e) {
+          console.error('Network error saving AI response:', e);
+        }
       }
     } catch (err) {
       if (err.name !== 'AbortError') {

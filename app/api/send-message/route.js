@@ -56,7 +56,7 @@ export async function POST(req) {
         }
 
         // Save User's latest prompt to MongoDB history
-        const activeChatId = chatId || `chat_${Date.now()}`;
+        const activeChatId = chatId || `chat-${Date.now()}`;
         const latestUserMsg = messages[messages.length - 1];
         let contentString = '';
         const rawContent = latestUserMsg?.content;

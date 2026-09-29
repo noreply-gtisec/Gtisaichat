@@ -131,20 +131,45 @@ export default function ChatMessage({ message, onRegenerate, onCopy }) {
         {/* Attached Files & Images Rendering */}
         {message.attachments && message.attachments.length > 0 && (
           <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', marginBottom: '10px' }}>
-            {message.attachments.map((att, aIdx) => (
+            {message.attachments.map((att, aIdx) => {
+              const imageSrc = att.dataUrl || att.driveUrl || null;
+              return (
               <div key={aIdx} style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                {att.isImage ? (
-                  <img
-                    src={att.dataUrl}
-                    alt={att.name}
+                {att.isImage && imageSrc ? (
+                  <a href={att.driveUrl || att.dataUrl} target="_blank" rel="noreferrer">
+                    <img
+                      src={imageSrc}
+                      alt={att.name}
+                      style={{
+                        maxHeight: '180px',
+                        maxWidth: '280px',
+                        borderRadius: '12px',
+                        border: '1px solid var(--border-ash)',
+                        objectFit: 'cover'
+                      }}
+                    />
+                  </a>
+                ) : att.driveUrl ? (
+                  <a
+                    href={att.driveUrl}
+                    target="_blank"
+                    rel="noreferrer"
                     style={{
-                      maxHeight: '180px',
-                      maxWidth: '280px',
-                      borderRadius: '12px',
-                      border: '1px solid var(--border-ash)',
-                      objectFit: 'cover'
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '8px',
+                      padding: '6px 12px',
+                      borderRadius: 'var(--radius-pill)',
+                      backgroundColor: 'var(--card-periwinkle)',
+                      fontSize: '12px',
+                      color: 'var(--cta-lake-blue)',
+                      textDecoration: 'none',
                     }}
-                  />
+                  >
+                    <span>📄</span>
+                    <span>{att.name}</span>
+                    <span style={{ opacity: 0.7, fontSize: '10px' }}>({att.size})</span>
+                  </a>
                 ) : (
                   <div
                     style={{
@@ -164,7 +189,8 @@ export default function ChatMessage({ message, onRegenerate, onCopy }) {
                   </div>
                 )}
               </div>
-            ))}
+              );
+            })}
           </div>
         )}
 

@@ -27,6 +27,12 @@ export async function GET(req) {
   try {
     const user = await getAuthUser(req);
     const userId = user ? user.id : 'anonymous_user';
+    const userEmail = user ? user.email : null;
+
+    // Build query that matches by userId OR userEmail for maximum compatibility
+    const userQuery = userEmail
+      ? { $or: [{ userId: userId }, { userEmail: userEmail }] }
+      : { userId: userId };
 
     const client = await clientPromise;
     const db = client.db('aichat');
@@ -35,10 +41,10 @@ export async function GET(req) {
     const chatId = searchParams.get('chatId');
 
     if (chatId) {
-      // Fetch messages for a specific chat thread
+      // Fetch messages for a specific chat thread (match by chatId + user identity)
       const messages = await db
         .collection('messages')
-        .find({ chatId: chatId, userId: userId })
+        .find({ chatId: chatId, ...userQuery })
         .sort({ createdAt: 1 })
         .toArray();
       return NextResponse.json({ chatId, messages });
@@ -46,7 +52,7 @@ export async function GET(req) {
       // Fetch all chat threads for this user
       const chats = await db
         .collection('chats')
-        .find({ userId: userId })
+        .find(userQuery)
         .sort({ updatedAt: -1 })
         .toArray();
       return NextResponse.json({ chats });
