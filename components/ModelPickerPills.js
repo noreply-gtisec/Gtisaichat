@@ -3,18 +3,16 @@
 export default function ModelPickerPills({
   models,
   selectedModel,
-  onSelectModel,
-  isCustomModel,
-  setIsCustomModel,
-  customModelId,
-  setCustomModelId
+  onSelectModel
 }) {
   const topFeaturedModels = [
-    { id: 'google/gemini-2.5-flash', label: 'Gemini 2.5 Flash', icon: '🌐' },
-    { id: 'deepseek/deepseek-r1', label: 'DeepSeek R1', icon: '🔍' },
-    { id: 'meta-llama/llama-3.3-70b-instruct', label: 'Llama 3.3 70B', icon: '🦙' },
-    { id: 'anthropic/claude-3.5-sonnet', label: 'Claude 3.5', icon: '🧠' },
-    { id: 'openai/gpt-4o', label: 'GPT-4o', icon: '⚡' },
+    { id: 'openai/gpt-6-luna-pro', label: 'GPT-6 Luna Pro', icon: '🧠' },
+    { id: 'openai/gpt-6-luna', label: 'GPT-6 Luna', icon: '⚡' },
+    { id: 'deepseek/deepseek-v4.1-flash', label: 'DeepSeek V4.1 Flash', icon: '🔍' },
+    { id: 'ibm-granite/granite-4.2-8b', label: 'Granite 4.2 8B', icon: '🏢' },
+    { id: 'upstage/solar-mini-4', label: 'Solar Mini 4', icon: '☀️' },
+    { id: 'xiaomi/mimo-v2.6-flash', label: 'MiMo-V2.6-Flash', icon: '📱' },
+    { id: 'inclusionai/ling-3.0-flash-vl', label: 'Ling 3.0 Flash VL', icon: '👁️' },
   ];
 
   return (
@@ -24,16 +22,13 @@ export default function ModelPickerPills({
       </span>
 
       {topFeaturedModels.map((m) => {
-        const isActive = !isCustomModel && selectedModel === m.id;
+        const isActive = selectedModel === m.id;
         return (
           <button
             key={m.id}
             type="button"
             className={`model-picker-pill ${isActive ? 'active' : ''}`}
-            onClick={() => {
-              setIsCustomModel(false);
-              onSelectModel(m.id);
-            }}
+            onClick={() => onSelectModel(m.id)}
           >
             <span>{m.icon}</span>
             <span>{m.label}</span>
@@ -42,10 +37,9 @@ export default function ModelPickerPills({
       })}
 
       <select
-        value={isCustomModel ? '' : selectedModel}
+        value={selectedModel}
         onChange={(e) => {
           if (e.target.value) {
-            setIsCustomModel(false);
             onSelectModel(e.target.value);
           }
         }}
@@ -59,27 +53,6 @@ export default function ModelPickerPills({
           </option>
         ))}
       </select>
-
-      {isCustomModel ? (
-        <input
-          type="text"
-          placeholder="Custom ID (e.g. google/gemini-2.5-pro)"
-          value={customModelId}
-          onChange={(e) => setCustomModelId(e.target.value)}
-          className="model-picker-pill active"
-          style={{ width: '220px', outline: 'none' }}
-          autoFocus
-        />
-      ) : (
-        <button
-          type="button"
-          className="model-picker-pill"
-          onClick={() => setIsCustomModel(true)}
-          title="Enter custom OpenRouter Model ID"
-        >
-          <span>+ CUSTOM</span>
-        </button>
-      )}
     </div>
   );
 }

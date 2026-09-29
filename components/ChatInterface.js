@@ -12,9 +12,7 @@ import { supabase } from '../lib/supabaseClient';
 export default function ChatInterface({ user, onLogout, onBackToLanding }) {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [models, setModels] = useState([]);
-  const [selectedModel, setSelectedModel] = useState('anthropic/claude-3.5-sonnet');
-  const [isCustomModel, setIsCustomModel] = useState(false);
-  const [customModelId, setCustomModelId] = useState('');
+  const [selectedModel, setSelectedModel] = useState('openai/gpt-6-luna-pro');
   const [isStreaming, setIsStreaming] = useState(false);
   const [chats, setChats] = useState([]);
   const [activeChatId, setActiveChatId] = useState(null);
@@ -151,9 +149,7 @@ export default function ChatInterface({ user, onLogout, onBackToLanding }) {
   };
 
   // Determine active target model string
-  const targetModel = isCustomModel && customModelId.trim()
-    ? customModelId.trim()
-    : selectedModel;
+  const targetModel = selectedModel;
 
   const handleSendMessage = async (text, attachments = []) => {
     let currentChatId = activeChatId;
@@ -429,10 +425,6 @@ export default function ChatInterface({ user, onLogout, onBackToLanding }) {
             models={models}
             selectedModel={selectedModel}
             onSelectModel={(mId) => setSelectedModel(mId)}
-            isCustomModel={isCustomModel}
-            setIsCustomModel={setIsCustomModel}
-            customModelId={customModelId}
-            setCustomModelId={setCustomModelId}
           />
         </div>
 
