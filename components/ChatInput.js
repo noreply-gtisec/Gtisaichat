@@ -5,6 +5,8 @@ import { useState, useRef, useEffect } from 'react';
 export default function ChatInput({ onSendMessage, isStreaming, onStopStream }) {
   const [input, setInput] = useState('');
   const [attachments, setAttachments] = useState([]);
+  const [uploading, setUploading] = useState(false);
+  const [uploadFileName, setUploadFileName] = useState('');
   const textareaRef = useRef(null);
   const fileInputRef = useRef(null);
 
@@ -26,7 +28,10 @@ export default function ChatInput({ onSendMessage, isStreaming, onStopStream }) 
     const files = Array.from(e.target.files || []);
     if (files.length === 0) return;
 
+    setUploading(true);
+
     for (const file of files) {
+      setUploadFileName(file.name);
       const isImage = file.type.startsWith('image/');
       let dataUrl = null;
       let textContent = null;
@@ -48,7 +53,7 @@ export default function ChatInput({ onSendMessage, isStreaming, onStopStream }) 
       let driveUrl = null;
       let driveFileId = null;
 
-      // Upload to Google Drive quietly in the background
+      // Upload to Google Drive in the background
       try {
         const formData = new FormData();
         formData.append('file', file);
@@ -85,6 +90,8 @@ export default function ChatInput({ onSendMessage, isStreaming, onStopStream }) 
       ]);
     }
 
+    setUploading(false);
+    setUploadFileName('');
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
     }
@@ -95,7 +102,7 @@ export default function ChatInput({ onSendMessage, isStreaming, onStopStream }) 
   };
 
   const handleSend = () => {
-    if ((!input.trim() && attachments.length === 0) || isStreaming) return;
+    if ((!input.trim() && attachments.length === 0) || isStreaming || uploading) return;
     onSendMessage(input.trim(), attachments);
     setInput('');
     setAttachments([]);
@@ -104,11 +111,26 @@ export default function ChatInput({ onSendMessage, isStreaming, onStopStream }) 
     }
   };
 
-  const canSend = (input.trim().length > 0 || attachments.length > 0) && !isStreaming;
+  const canSend = (input.trim().length > 0 || attachments.length > 0) && !isStreaming && !uploading;
 
   return (
     <div className="chat-input-wrapper">
       <div className="chat-input-card">
+        {/* Uploading progress indicator */}
+        {uploading && (
+          <div className="file-upload-indicator">
+            <div className="file-upload-indicator-inner">
+              <span className="file-upload-spinner" />
+              <span className="file-upload-text">
+                Uploading <strong>{uploadFileName}</strong>...
+              </span>
+            </div>
+            <div className="file-upload-progress-bar">
+              <div className="file-upload-progress-fill" />
+            </div>
+          </div>
+        )}
+
         {attachments.length > 0 && (
           <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', paddingBottom: '8px', borderBottom: '1px dashed var(--border-ash)' }}>
             {attachments.map((att) => (
@@ -177,9 +199,10 @@ export default function ChatInput({ onSendMessage, isStreaming, onStopStream }) 
               type="button"
               className="chip-toggle"
               onClick={() => fileInputRef.current?.click()}
+              disabled={uploading}
               title="Attach File or Image"
             >
-              📎 Attach File / Image
+              {uploading ? '⏳ Processing...' : '📎 Attach File / Image'}
             </button>
 
             <span style={{ fontSize: '11px', color: 'var(--text-smoke)' }}>
