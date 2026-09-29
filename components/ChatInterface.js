@@ -22,14 +22,12 @@ export default function ChatInterface({ user, onLogout, onBackToLanding }) {
   const messagesEndRef = useRef(null);
   const abortControllerRef = useRef(null);
 
-  const userKey = user?.email ? user.email.toLowerCase() : 'guest';
-  const storageKey = `gtis_ai_chats_${userKey}`;
 
   // Fetch available models dynamically from OpenRouter backend catalog
   useEffect(() => {
     async function fetchModels() {
       try {
-        const res = await fetch('/api/models');
+        const res = await fetch('/api/ai-models');
         if (res.ok) {
           const data = await res.json();
           if (data.models && data.models.length > 0) {
@@ -43,35 +41,81 @@ export default function ChatInterface({ user, onLogout, onBackToLanding }) {
     fetchModels();
   }, []);
 
-  // Load chats from LocalStorage whenever user changes
+  // Load chat threads from MongoDB on user load
   useEffect(() => {
-    try {
-      const saved = localStorage.getItem(storageKey);
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        setChats(parsed);
-        if (parsed.length > 0) {
-          setActiveChatId(parsed[0].id);
-        } else {
-          setActiveChatId(null);
-        }
-      } else {
-        setChats([]);
-        setActiveChatId(null);
-      }
-    } catch (err) {
-      console.error('Failed to load chats from localStorage:', err);
-    }
-  }, [storageKey]);
+    async function loadUserChats() {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        const headers = session?.access_token
+          ? { Authorization: `Bearer ${session.access_token}` }
+          : {};
 
-  // Save chats to LocalStorage whenever chats state updates for the active user
-  useEffect(() => {
-    try {
-      localStorage.setItem(storageKey, JSON.stringify(chats));
-    } catch (err) {
-      console.error('Failed to save chats to localStorage:', err);
+        const res = await fetch('/api/chat-history', { headers });
+        if (res.ok) {
+          const data = await res.json();
+          if (data.chats && data.chats.length > 0) {
+            const formatted = data.chats.map((c) => ({
+              id: c._id,
+              title: c.title || 'New Security Audit',
+              createdAt: c.createdAt,
+              messages: [],
+            }));
+            setChats(formatted);
+            setActiveChatId(formatted[0].id);
+          } else {
+            setChats([]);
+            setActiveChatId(null);
+          }
+        }
+      } catch (err) {
+        console.error('Failed to load chats from MongoDB:', err);
+      }
     }
-  }, [chats, storageKey]);
+    loadUserChats();
+  }, [user]);
+
+  // Load messages for active chat thread from MongoDB if empty
+  useEffect(() => {
+    if (!activeChatId) return;
+    const currentChat = chats.find((c) => c.id === activeChatId);
+    if (currentChat && currentChat.messages && currentChat.messages.length > 0) return;
+
+    async function loadChatMessages() {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        const headers = session?.access_token
+          ? { Authorization: `Bearer ${session.access_token}` }
+          : {};
+
+        const res = await fetch(`/api/chat-history?chatId=${activeChatId}`, { headers });
+        if (res.ok) {
+          const data = await res.json();
+          if (data.messages) {
+            setChats((prev) =>
+              prev.map((c) => {
+                if (c.id === activeChatId) {
+                  return {
+                    ...c,
+                    messages: data.messages.map((m) => ({
+                      id: m._id,
+                      role: m.role,
+                      content: m.content,
+                      attachments: m.attachments || [],
+                      timestamp: m.createdAt ? new Date(m.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '',
+                    })),
+                  };
+                }
+                return c;
+              })
+            );
+          }
+        }
+      } catch (err) {
+        console.error('Failed to load thread messages:', err);
+      }
+    }
+    loadChatMessages();
+  }, [activeChatId]);
 
   const activeChat = chats.find((c) => c.id === activeChatId);
   const messages = activeChat ? activeChat.messages : [];
@@ -216,7 +260,7 @@ export default function ChatInterface({ user, onLogout, onBackToLanding }) {
         headers['Authorization'] = `Bearer ${accessToken}`;
       }
 
-      const response = await fetch('/api/chat', {
+      const response = await fetch('/api/send-message', {
         method: 'POST',
         headers,
         body: JSON.stringify({

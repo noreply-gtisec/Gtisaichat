@@ -21,8 +21,20 @@ export default function ChatMessage({ message, onRegenerate, onCopy }) {
     }
   };
 
-  const renderFormattedContent = (content) => {
-    if (!content) return null;
+  const renderFormattedContent = (rawContent) => {
+    if (!rawContent) return null;
+
+    let content = rawContent;
+    if (typeof content !== 'string') {
+      if (Array.isArray(content)) {
+        const textObj = content.find((item) => item && (item.text || typeof item === 'string'));
+        content = textObj ? (textObj.text || String(textObj)) : JSON.stringify(content);
+      } else if (typeof content === 'object') {
+        content = content.text ? String(content.text) : JSON.stringify(content);
+      } else {
+        content = String(content);
+      }
+    }
 
     const codeBlockRegex = /```(\w+)?\n([\s\S]*?)```/g;
     const parts = [];
