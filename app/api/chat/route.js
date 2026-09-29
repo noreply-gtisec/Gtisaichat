@@ -1,7 +1,29 @@
-import { NextResponse } from 'next/server';
+import { createClient } from '@supabase/supabase-js';
+
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
+const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
 
 export async function POST(req) {
   try {
+    // Read Authorization header (Bearer JWT)
+    const authHeader = req.headers.get('authorization');
+    let authenticatedUser = null;
+
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+      const jwtToken = authHeader.substring(7);
+      if (supabaseUrl && supabaseAnonKey && supabaseUrl !== 'https://placeholder.supabase.co') {
+        try {
+          const supabase = createClient(supabaseUrl, supabaseAnonKey);
+          const { data: { user }, error } = await supabase.auth.getUser(jwtToken);
+          if (!error && user) {
+            authenticatedUser = user;
+          }
+        } catch (e) {
+          console.warn('JWT Verification error:', e.message);
+        }
+      }
+    }
+
     const { model, messages, webSearch } = await req.json();
 
     if (!messages || !Array.isArray(messages) || messages.length === 0) {

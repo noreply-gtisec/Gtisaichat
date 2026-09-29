@@ -7,6 +7,8 @@ import ChatInput from './ChatInput';
 import EmptyState from './EmptyState';
 import ModelPickerPills from './ModelPickerPills';
 
+import { supabase } from '../lib/supabaseClient';
+
 export default function ChatInterface({ user, onLogout, onBackToLanding }) {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [models, setModels] = useState([]);
@@ -19,6 +21,9 @@ export default function ChatInterface({ user, onLogout, onBackToLanding }) {
 
   const messagesEndRef = useRef(null);
   const abortControllerRef = useRef(null);
+
+  const userKey = user?.email ? user.email.toLowerCase() : 'guest';
+  const storageKey = `gtis_ai_chats_${userKey}`;
 
   // Fetch available models dynamically from OpenRouter backend catalog
   useEffect(() => {
@@ -38,32 +43,35 @@ export default function ChatInterface({ user, onLogout, onBackToLanding }) {
     fetchModels();
   }, []);
 
-  // Load chats from LocalStorage on initial mount
+  // Load chats from LocalStorage whenever user changes
   useEffect(() => {
     try {
-      const saved = localStorage.getItem('gtis_ai_chats');
+      const saved = localStorage.getItem(storageKey);
       if (saved) {
         const parsed = JSON.parse(saved);
         setChats(parsed);
         if (parsed.length > 0) {
           setActiveChatId(parsed[0].id);
+        } else {
+          setActiveChatId(null);
         }
+      } else {
+        setChats([]);
+        setActiveChatId(null);
       }
     } catch (err) {
       console.error('Failed to load chats from localStorage:', err);
     }
-  }, []);
+  }, [storageKey]);
 
-  // Save chats to LocalStorage whenever chats state updates
+  // Save chats to LocalStorage whenever chats state updates for the active user
   useEffect(() => {
     try {
-      if (chats.length > 0) {
-        localStorage.setItem('gtis_ai_chats', JSON.stringify(chats));
-      }
+      localStorage.setItem(storageKey, JSON.stringify(chats));
     } catch (err) {
       console.error('Failed to save chats to localStorage:', err);
     }
-  }, [chats]);
+  }, [chats, storageKey]);
 
   const activeChat = chats.find((c) => c.id === activeChatId);
   const messages = activeChat ? activeChat.messages : [];
@@ -197,9 +205,20 @@ export default function ChatInterface({ user, onLogout, onBackToLanding }) {
         { role: 'user', content: apiUserContent },
       ];
 
+      // Fetch current Supabase JWT token if user is logged in
+      const { data: { session } } = await supabase.auth.getSession();
+      const accessToken = session?.access_token;
+
+      const headers = {
+        'Content-Type': 'application/json',
+      };
+      if (accessToken) {
+        headers['Authorization'] = `Bearer ${accessToken}`;
+      }
+
       const response = await fetch('/api/chat', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify({
           model: targetModel,
           messages: apiMessages,
