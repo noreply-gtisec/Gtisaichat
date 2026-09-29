@@ -36,8 +36,8 @@ export async function POST(req) {
     const userId = authenticatedUser ? authenticatedUser.id : 'anonymous_user';
     const userEmail = authenticatedUser ? authenticatedUser.email : null;
 
-    // 2. Lookup per-user API Key from MongoDB
-    let effectiveApiKey = process.env.OPENROUTER_API_KEY;
+    // 2. Lookup per-user API Key from MongoDB (no fallback — each user must have their own key)
+    let effectiveApiKey = null;
 
     try {
       if (process.env.MONGODB_URI) {
@@ -110,8 +110,8 @@ export async function POST(req) {
 
     if (!effectiveApiKey) {
       return NextResponse.json(
-        { error: 'API key is missing. No key bound for this user and OPENROUTER_API_KEY is not set.' },
-        { status: 500 }
+        { error: 'No API key found for your account. Please contact your administrator to bind an API key.' },
+        { status: 403 }
       );
     }
 
