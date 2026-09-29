@@ -5,7 +5,7 @@ import Image from 'next/image';
 import Link from 'next/link';
 
 function formatChatTitle(title) {
-  if (!title) return 'New Security Audit';
+  if (!title) return 'New Security Chat';
   if (typeof title === 'string') return title;
   if (typeof title === 'object') {
     if (typeof title.text === 'string') return title.text.slice(0, 36);
@@ -50,9 +50,9 @@ export default function ChatSidebar({
         <button
           onClick={onNewChat}
           className="sidebar-new-btn"
-          title="Start New Security Audit"
+          title="Start New Security Chat"
         >
-          <span style={{ fontSize: '15px', fontWeight: 'bold' }}>+</span> New Audit
+          <span style={{ fontSize: '15px', fontWeight: 'bold' }}>+</span> New Chat
         </button>
       </div>
 
@@ -62,13 +62,18 @@ export default function ChatSidebar({
           <span className="search-icon">🔍</span>
           <input
             type="text"
-            placeholder="Search audits..."
+            placeholder="Search chats..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             className="sidebar-search-input-field"
           />
           {searchQuery && (
-            <button className="search-clear-btn" onClick={() => setSearchQuery('')}>
+            <button
+              type="button"
+              className="search-clear-btn"
+              onClick={() => setSearchQuery('')}
+              aria-label="Clear search"
+            >
               ✕
             </button>
           )}
@@ -78,12 +83,12 @@ export default function ChatSidebar({
       {/* Chat History List */}
       <div className="sidebar-history-container">
         <div className="sidebar-section-title">
-          RECENT AUDITS ({filteredChats.length})
+          RECENT Chats ({filteredChats.length})
         </div>
 
         {filteredChats.length === 0 ? (
           <div className="sidebar-empty-state">
-            No audits found
+            No Chats found
           </div>
         ) : (
           <div className="sidebar-items-list">
@@ -105,7 +110,7 @@ export default function ChatSidebar({
                     onDeleteChat(chat.id);
                   }}
                   className="chat-item-delete-btn"
-                  title="Delete Audit"
+                  title="Delete Chat"
                 >
                   🗑️
                 </button>
@@ -116,32 +121,34 @@ export default function ChatSidebar({
       </div>
 
       {/* Sidebar Footer with Clean User Badge & Fixed Logout Button */}
-      <div className="sidebar-footer-new">
-        <div className="sidebar-user-card">
-          <div className="sidebar-user-avatar">
-            {user?.email ? user.email.charAt(0).toUpperCase() : 'G'}
-          </div>
-          <div className="sidebar-user-meta">
-            <span className="sidebar-user-email" title={user?.email || 'Guest User'}>
-              {user?.name || user?.email || 'Guest User'}
-            </span>
-          </div>
-        </div>
+     <div className="sidebar-footer-new">
+  <div className="sidebar-user-card">
+    <div className="sidebar-user-avatar">
+      {user?.email ? user.email.charAt(0).toUpperCase() : 'G'}
+    </div>
 
-        {onLogout && (
-          <button
-            onClick={onLogout}
-            className="sidebar-logout-btn"
-          >
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
-              <polyline points="16 17 21 12 16 7"></polyline>
-              <line x1="21" y1="12" x2="9" y2="12"></line>
-            </svg>
-            <span>Log out</span>
-          </button>
-        )}
-      </div>
+    <div className="sidebar-user-meta">
+      <span className="sidebar-user-email" title={user?.email || 'Guest User'}>
+        {user?.name || user?.email || 'Guest User'}
+      </span>
+    </div>
+
+    {onLogout && (
+      <button
+        onClick={onLogout}
+        className="sidebar-logout-btn"
+        title="Log out"
+        aria-label="Log out"
+      >
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
+          <polyline points="16 17 21 12 16 7"></polyline>
+          <line x1="21" y1="12" x2="9" y2="12"></line>
+        </svg>
+      </button>
+    )}
+  </div>
+</div>
     </aside>
   );
 }
