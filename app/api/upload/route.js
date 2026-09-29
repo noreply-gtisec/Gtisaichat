@@ -20,7 +20,11 @@ export async function POST(req) {
       file: driveResult,
     });
   } catch (error) {
-    console.error('File Upload Error:', error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    console.warn('Google Drive File Upload Notice:', error.message);
+    let userMsg = error.message;
+    if (error.message.includes('invalid_grant') || error.message.includes('account not found')) {
+      userMsg = 'Google Drive Service Account credential error (Invalid grant: account not found). Please verify GDRIVE_CLIENT_EMAIL and GDRIVE_PRIVATE_KEY in .env.local.';
+    }
+    return NextResponse.json({ success: false, error: userMsg }, { status: 400 });
   }
 }

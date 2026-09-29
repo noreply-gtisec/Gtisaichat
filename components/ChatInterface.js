@@ -264,6 +264,7 @@ export default function ChatInterface({ user, onLogout, onBackToLanding }) {
         method: 'POST',
         headers,
         body: JSON.stringify({
+          chatId: currentChatId,
           model: targetModel,
           messages: apiMessages,
         }),
@@ -314,6 +315,19 @@ export default function ChatInterface({ user, onLogout, onBackToLanding }) {
             }
           }
         }
+      }
+
+      // Save completed AI assistant response to MongoDB
+      if (accumulatedContent) {
+        fetch('/api/save-message', {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({
+            chatId: currentChatId,
+            role: 'assistant',
+            content: accumulatedContent,
+          }),
+        }).catch((e) => console.warn('Failed to save assistant response:', e));
       }
     } catch (err) {
       if (err.name !== 'AbortError') {

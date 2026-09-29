@@ -22,46 +22,68 @@ export default function ChatInput({ onSendMessage, isStreaming, onStopStream }) 
     }
   };
 
-  const handleFileSelect = (e) => {
+  const handleFileSelect = async (e) => {
     const files = Array.from(e.target.files || []);
     if (files.length === 0) return;
 
-    files.forEach((file) => {
+    for (const file of files) {
       const isImage = file.type.startsWith('image/');
-      const reader = new FileReader();
+      let dataUrl = null;
+      let textContent = null;
 
       if (isImage) {
-        reader.onload = (event) => {
-          setAttachments((prev) => [
-            ...prev,
-            {
-              id: `att-${Date.now()}-${Math.random()}`,
-              name: file.name,
-              size: (file.size / 1024).toFixed(1) + ' KB',
-              type: file.type,
-              isImage: true,
-              dataUrl: event.target.result,
-            },
-          ]);
-        };
-        reader.readAsDataURL(file);
+        dataUrl = await new Promise((resolve) => {
+          const reader = new FileReader();
+          reader.onload = (event) => resolve(event.target.result);
+          reader.readAsDataURL(file);
+        });
       } else {
-        reader.onload = (event) => {
-          setAttachments((prev) => [
-            ...prev,
-            {
-              id: `att-${Date.now()}-${Math.random()}`,
-              name: file.name,
-              size: (file.size / 1024).toFixed(1) + ' KB',
-              type: file.type,
-              isImage: false,
-              textContent: event.target.result,
-            },
-          ]);
-        };
-        reader.readAsText(file);
+        textContent = await new Promise((resolve) => {
+          const reader = new FileReader();
+          reader.onload = (event) => resolve(event.target.result);
+          reader.readAsText(file);
+        });
       }
-    });
+
+      let driveUrl = null;
+      let driveFileId = null;
+
+      // Upload to Google Drive quietly in the background
+      try {
+        const formData = new FormData();
+        formData.append('file', file);
+
+        const res = await fetch('/api/upload', {
+          method: 'POST',
+          body: formData,
+        });
+
+        if (res.ok) {
+          const data = await res.json();
+          if (data.success && data.file) {
+            driveUrl = data.file.fileUrl || data.file.downloadUrl;
+            driveFileId = data.file.driveFileId;
+          }
+        }
+      } catch (err) {
+        console.warn('Google Drive background upload warning:', err.message);
+      }
+
+      setAttachments((prev) => [
+        ...prev,
+        {
+          id: `att-${Date.now()}-${Math.random()}`,
+          name: file.name,
+          size: (file.size / 1024).toFixed(1) + ' KB',
+          type: file.type,
+          isImage,
+          dataUrl,
+          textContent,
+          driveUrl,
+          driveFileId,
+        },
+      ]);
+    }
 
     if (fileInputRef.current) {
       fileInputRef.current.value = '';

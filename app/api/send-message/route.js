@@ -57,6 +57,7 @@ export async function POST(req) {
 
         // Save User's latest prompt to MongoDB history
         const activeChatId = chatId || `chat_${Date.now()}`;
+        const latestUserMsg = messages[messages.length - 1];
         let contentString = '';
         const rawContent = latestUserMsg?.content;
         if (typeof rawContent === 'string') {
@@ -114,10 +115,10 @@ export async function POST(req) {
       );
     }
 
-    // Map model selection to OpenRouter model ID
-    let openRouterModel = model || 'anthropic/claude-3.5-sonnet';
-    if (model === 'gtis-cyber-core') {
-      openRouterModel = 'anthropic/claude-3.5-sonnet';
+    // Map model selection to active OpenRouter model ID
+    let openRouterModel = model || 'anthropic/claude-3.5-sonnet:beta';
+    if (model === 'anthropic/claude-3.5-sonnet' || model === 'gtis-cyber-core') {
+      openRouterModel = 'anthropic/claude-3.5-sonnet:beta';
     }
 
     // System prompt for GTIS Cybersecurity AI Engine
