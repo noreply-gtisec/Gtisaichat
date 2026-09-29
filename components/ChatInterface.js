@@ -5,7 +5,6 @@ import ChatSidebar from './ChatSidebar';
 import ChatMessage from './ChatMessage';
 import ChatInput from './ChatInput';
 import EmptyState from './EmptyState';
-import ModelPickerPills from './ModelPickerPills';
 
 import { supabase } from '../lib/supabaseClient';
 
@@ -412,21 +411,25 @@ export default function ChatInterface({ user, onLogout, onBackToLanding }) {
           </div>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <span className="active-model-indicator">
-              ⚡ ACTIVE: {targetModel}
+            <span className="active-model-badge">
+              ⚡ ACTIVE:
+              <select
+                value={selectedModel}
+                onChange={(e) => setSelectedModel(e.target.value)}
+                className="model-dropdown"
+              >
+                {models.map((mod) => (
+                  <option key={mod.id} value={mod.id}>
+                    {mod.name}
+                  </option>
+                ))}
+              </select>
             </span>
             
           </div>
         </div>
 
-        {/* Top Model Picker Bar */}
-        <div style={{ width: '100%', padding: '8px 16px 0', borderBottom: '1px solid var(--border-ash)', background: 'var(--bg-parchment)' }}>
-          <ModelPickerPills
-            models={models}
-            selectedModel={selectedModel}
-            onSelectModel={(mId) => setSelectedModel(mId)}
-          />
-        </div>
+
 
         {/* Messages Stream Container */}
         <div className="chat-messages-container">
