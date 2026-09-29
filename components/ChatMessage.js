@@ -132,7 +132,12 @@ export default function ChatMessage({ message, onRegenerate, onCopy }) {
         {message.attachments && message.attachments.length > 0 && (
           <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', marginBottom: '10px' }}>
             {message.attachments.map((att, aIdx) => {
-              const imageSrc = att.dataUrl || att.driveUrl || null;
+              // Convert Google Drive file ID to a direct image rendering URL
+              const directDriveImgUrl = att.driveFileId ? `https://drive.google.com/thumbnail?id=${att.driveFileId}&sz=w800` : null;
+              const fallbackImgUrl = att.driveFileId ? `https://drive.google.com/uc?export=view&id=${att.driveFileId}` : att.driveUrl;
+              
+              const imageSrc = att.dataUrl || directDriveImgUrl || fallbackImgUrl || null;
+              
               return (
               <div key={aIdx} style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
                 {att.isImage && imageSrc ? (
@@ -149,6 +154,19 @@ export default function ChatMessage({ message, onRegenerate, onCopy }) {
                       }}
                     />
                   </a>
+                ) : att.driveFileId ? (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxWidth: '350px' }}>
+                    <div style={{ fontSize: '12px', fontWeight: '500', color: 'var(--text-smoke)' }}>
+                      📄 {att.name}
+                    </div>
+                    <iframe
+                      src={`https://drive.google.com/file/d/${att.driveFileId}/preview`}
+                      width="350"
+                      height="240"
+                      style={{ border: '1px solid var(--border-ash)', borderRadius: '12px' }}
+                      allow="autoplay"
+                    ></iframe>
+                  </div>
                 ) : att.driveUrl ? (
                   <a
                     href={att.driveUrl}
