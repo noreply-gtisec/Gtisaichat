@@ -37,15 +37,21 @@ export default function ChatSidebar({
     <aside className={`chat-sidebar ${collapsed ? 'collapsed' : ''}`}>
       {/* Sidebar Header */}
       <div className="sidebar-header-new">
-        <Link href="/" className="sidebar-brand" aria-label="GTIS home">
+        <Link
+          href="/"
+          className="sidebar-brand"
+          aria-label="GTIS home"
+          style={{ display: 'flex', alignItems: 'center', gap: '8px', textDecoration: 'none' }}
+        >
           <Image
             src="/logo.png"
             alt="GTIS"
-            width={100}
-            height={32}
+            width={72}
+            height={24}
             style={{ height: 'auto', width: 'auto', objectFit: 'contain' }}
             priority
           />
+          
         </Link>
         <button
           onClick={onNewChat}
@@ -121,34 +127,73 @@ export default function ChatSidebar({
       </div>
 
       {/* Sidebar Footer with Clean User Badge & Fixed Logout Button */}
-     <div className="sidebar-footer-new">
-  <div className="sidebar-user-card">
-    <div className="sidebar-user-avatar">
-      {user?.email ? user.email.charAt(0).toUpperCase() : 'G'}
-    </div>
+      <div className="sidebar-footer-new">
+        <div className="sidebar-user-card">
+          <div className="sidebar-user-avatar">
+            {user?.avatar ? (
+              <img
+                src={user.avatar}
+                alt={user.name || 'User'}
+                style={{ width: '100%', height: '100%', borderRadius: '50%', objectFit: 'cover' }}
+              />
+            ) : (
+              user?.name
+                ? user.name.charAt(0).toUpperCase()
+                : user?.email
+                ? user.email.charAt(0).toUpperCase()
+                : 'U'
+            )}
+          </div>
 
-    <div className="sidebar-user-meta">
-      <span className="sidebar-user-email" title={user?.email || 'Guest User'}>
-        {user?.name || user?.email || 'Guest User'}
-      </span>
-    </div>
+          <div className="sidebar-user-meta">
+            <span
+              style={{
+                fontSize: '13px',
+                fontWeight: '600',
+                color: '#1e293b',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                whiteSpace: 'nowrap',
+                lineHeight: '1.2',
+              }}
+              title={user?.name || 'Security Officer'}
+            >
+              {user?.name || 'Security Officer'}
+            </span>
+            {user?.email && (
+              <span
+                style={{
+                  fontSize: '11px',
+                  color: '#64748b',
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  whiteSpace: 'nowrap',
+                  lineHeight: '1.2',
+                  marginTop: '2px',
+                }}
+                title={user.email}
+              >
+                {user.email}
+              </span>
+            )}
+          </div>
 
-    {onLogout && (
-      <button
-        onClick={onLogout}
-        className="sidebar-logout-btn"
-        title="Log out"
-        aria-label="Log out"
-      >
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-          <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
-          <polyline points="16 17 21 12 16 7"></polyline>
-          <line x1="21" y1="12" x2="9" y2="12"></line>
-        </svg>
-      </button>
-    )}
-  </div>
-</div>
+          {onLogout && (
+            <button
+              onClick={onLogout}
+              className="sidebar-logout-btn"
+              title="Log out"
+              aria-label="Log out"
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
+                <polyline points="16 17 21 12 16 7"></polyline>
+                <line x1="21" y1="12" x2="9" y2="12"></line>
+              </svg>
+            </button>
+          )}
+        </div>
+      </div>
     </aside>
   );
 }

@@ -22,14 +22,12 @@ export default function EmptyState({ userName, onSelectSuggestion }) {
 
   return (
     <div className="empty-state-container">
-      <span className="mono-small" style={{ color: 'var(--cta-lake-blue)', marginBottom: '8px' }}>
-        GTIS AI CHATBOT • VOL. 01
-      </span>
+      
       <h2 className="serif-heading" style={{ fontSize: '42px', marginBottom: '8px' }}>
-        Welcome, {userName || 'Security Engineer'}
+        Welcome, {userName || 'Security Officer'}
       </h2>
-      <p className="mono-subtext" style={{ maxWidth: '560px', fontSize: '16px' }}>
-        How can GTIS AI Cyber Engine assist your threat intelligence and SecOps workflow today?
+      <p className="mono-subtext" style={{ maxWidth: '620px', fontSize: '16px' }}>
+        I&apos;m Zyra, your GTIS AI security assistant. Ask me anything from threat intelligence, zero-trust policies, and code auditing to everyday SecOps inquiries.
       </p>
 
       <div className="prompt-suggestions-grid">

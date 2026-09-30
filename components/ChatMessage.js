@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 
-export default function ChatMessage({ message, onRegenerate, onCopy }) {
+export default function ChatMessage({ message, user, onRegenerate, onCopy }) {
   const [copiedCodeIndex, setCopiedCodeIndex] = useState(null);
   const [copiedText, setCopiedText] = useState(false);
   const [thoughtOpen, setThoughtOpen] = useState(false);
@@ -113,13 +113,29 @@ export default function ChatMessage({ message, onRegenerate, onCopy }) {
   return (
     <div className={`message-row ${isUser ? 'user' : 'assistant'}`}>
       <div className={`message-avatar ${isUser ? 'user' : 'assistant'}`}>
-        {isUser ? 'U' : 'G'}
+        {isUser ? (
+          user?.avatar ? (
+            <img
+              src={user.avatar}
+              alt={user.name || 'User'}
+              style={{ width: '100%', height: '100%', borderRadius: '50%', objectFit: 'cover' }}
+            />
+          ) : (
+            user?.name
+              ? user.name.charAt(0).toUpperCase()
+              : user?.email
+              ? user.email.charAt(0).toUpperCase()
+              : 'U'
+          )
+        ) : (
+          'Z'
+        )}
       </div>
 
       <div className="message-content-wrapper">
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <span className="message-role-label">
-            {isUser ? 'USER' : 'GTIS AI ENGINE'}
+            {isUser ? (user?.name || 'YOU') : 'ZYRA • GTIS AI'}
           </span>
           {message.timestamp && (
             <span style={{ fontSize: '11px', color: 'var(--text-smoke)' }}>

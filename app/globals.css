@@ -910,6 +910,9 @@ h1, h2, h3, h4, .serif-heading {
   justify-content: center;
   font-weight: 500;
   font-size: 12px;
+  object-fit: cover;
+  flex-shrink: 0;
+  overflow: hidden;
 }
 
 .btn-logout {
@@ -1334,6 +1337,7 @@ h1, h2, h3, h4, .serif-heading {
   font-weight: 600;
   font-size: 13px;
   box-shadow: 0 2px 4px rgba(30, 58, 138, 0.2);
+  overflow: hidden;
 }
 
 .sidebar-user-meta {

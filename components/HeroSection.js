@@ -34,8 +34,7 @@ export default function HeroSection({ user, onOpenGoogleLogin, onOpenChat }) {
                   fontFamily: 'var(--font-mono, monospace)',
                 }}
               >
-                🔒 Authorized access restricted to @gtisec.com accounts
-              </span>
+               🔒 Authorized Access Only              </span>
             </>
           ) : (
             <button

@@ -448,12 +448,16 @@ export default function ChatInterface({ user, onLogout, onBackToLanding }) {
             >
               ☰
             </button>
-            <span className="mono-small" style={{ fontSize: '13px', color: 'var(--text-off-black)' }}>
-              GTIS AI CHATBOT WORKSPACE
-            </span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <span style={{ fontWeight: '700', fontSize: '16px', letterSpacing: '-0.02em', color: 'var(--text-off-black)' }}>
+                Zyra
+              </span>
+              
+                
+            </div>
           </div>
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
             <span className="active-model-badge">
               ⚡ ACTIVE:
               <select
@@ -468,11 +472,49 @@ export default function ChatInterface({ user, onLogout, onBackToLanding }) {
                 ))}
               </select>
             </span>
+
             
+
+            {user && (
+              <div className="user-profile-badge" style={{ height: '34px', padding: '2px 10px 2px 4px' }}>
+                {user.avatar ? (
+                  <img
+                    src={user.avatar}
+                    alt={user.name || 'User'}
+                    className="user-avatar"
+                    style={{ objectFit: 'cover' }}
+                  />
+                ) : (
+                  <span className="user-avatar">
+                    {user.name
+                      ? user.name.charAt(0).toUpperCase()
+                      : user.email
+                      ? user.email.charAt(0).toUpperCase()
+                      : 'U'}
+                  </span>
+                )}
+                <span
+                  style={{
+                    fontWeight: '600',
+                    fontSize: '12px',
+                    maxWidth: '130px',
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    whiteSpace: 'nowrap',
+                  }}
+                  title={user.name || user.email}
+                >
+                  {user.name || user.email}
+                </span>
+                {onLogout && (
+                  <button onClick={onLogout} className="btn-logout" title="Sign Out">
+                    LOGOUT
+                  </button>
+                )}
+              </div>
+            )}
           </div>
         </div>
-
-
 
         {/* Messages Stream Container */}
         <div className="chat-messages-container">
@@ -487,6 +529,7 @@ export default function ChatInterface({ user, onLogout, onBackToLanding }) {
                 <ChatMessage
                   key={msg.id}
                   message={msg}
+                  user={user}
                   onRegenerate={() => {
                     const lastUser = [...messages].reverse().find((m) => m.role === 'user');
                     if (lastUser) handleSendMessage(lastUser.content, lastUser.attachments);

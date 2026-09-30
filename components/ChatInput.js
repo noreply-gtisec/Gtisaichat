@@ -226,7 +226,7 @@ export default function ChatInput({ onSendMessage, isStreaming, onStopStream }) 
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={handleKeyDown}
-          placeholder="Ask GTIS AI cybersecurity engine... (Attach files or images below)"
+          placeholder="Ask Zyra anything about cybersecurity, threats, compliance, or zero-trust..."
           className="chat-textarea"
           rows={1}
           disabled={isStreaming}

@@ -115,10 +115,10 @@ export async function POST(req) {
       openRouterModel = 'anthropic/claude-3.5-sonnet:beta';
     }
 
-    // System prompt for GTIS Cybersecurity AI Engine
+    // System prompt for Zyra - GTIS Cybersecurity AI Engine
     const systemPrompt = {
       role: 'system',
-      content: `You are GTIS AI Engine, an elite enterprise Cybersecurity & Threat Intelligence AI Assistant.
+      content: `You are Zyra, an elite enterprise Cybersecurity & Threat Intelligence AI Assistant built by GTIS.
 You specialize in SecOps monitoring, zero-trust architecture, incident response playbooks, CVE vulnerability analysis, cloud infrastructure hardening, and ISO 27001 / SOC 2 compliance.
 Respond with high precision, clear technical depth, and clean markdown code snippets when applicable.`
     };
