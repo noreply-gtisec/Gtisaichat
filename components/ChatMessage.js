@@ -127,6 +127,19 @@ function ChatMessageBase({ message, user, isStreaming, onRegenerate, onCopy }) {
   const truncated = rawText.length > MAX_DISPLAY_CHARS;
   const displayText = truncated && !showFull ? rawText.slice(0, MAX_DISPLAY_CHARS) : rawText;
 
+  // For user messages, display the clean user prompt instead of dumping thousands of lines of attached document text
+  const displayPrompt = useMemo(() => {
+    if (!isUser) return '';
+    if (message.promptText) return message.promptText;
+    const str = rawText;
+    const docIdx = str.indexOf('\n\n[Attached ');
+    if (docIdx !== -1) {
+      const clean = str.slice(0, docIdx).trim();
+      return clean || (message.attachments?.length > 0 ? '' : str);
+    }
+    return str;
+  }, [isUser, message.promptText, rawText, message.attachments]);
+
   const copyToClipboard = (text) => {
     if (typeof navigator !== 'undefined' && navigator.clipboard) {
       navigator.clipboard.writeText(text);
@@ -288,7 +301,9 @@ function ChatMessageBase({ message, user, isStreaming, onRegenerate, onCopy }) {
           ) : (
             <>
               {isUser ? (
-                <div className="user-message-text">{displayText}</div>
+                displayPrompt ? (
+                  <div className="user-message-text">{displayPrompt}</div>
+                ) : null
               ) : (
                 <div className="md">
                   <ReactMarkdown
@@ -299,7 +314,7 @@ function ChatMessageBase({ message, user, isStreaming, onRegenerate, onCopy }) {
                   </ReactMarkdown>
                 </div>
               )}
-              {truncated && !showFull && (
+              {truncated && !showFull && !isUser && (
                 <button
                   onClick={() => setShowFull(true)}
                   style={{ background: 'transparent', border: 'none', fontSize: '12px', color: 'var(--cta-lake-blue)', cursor: 'pointer', fontWeight: '600', padding: '4px 0' }}
@@ -307,7 +322,7 @@ function ChatMessageBase({ message, user, isStreaming, onRegenerate, onCopy }) {
                   Show more ({(rawText.length - MAX_DISPLAY_CHARS).toLocaleString()} more characters)
                 </button>
               )}
-              {truncated && showFull && (
+              {truncated && showFull && !isUser && (
                 <button
                   onClick={() => setShowFull(false)}
                   style={{ background: 'transparent', border: 'none', fontSize: '12px', color: 'var(--text-smoke)', cursor: 'pointer', padding: '4px 0' }}
@@ -326,7 +341,7 @@ function ChatMessageBase({ message, user, isStreaming, onRegenerate, onCopy }) {
           <div className="message-actions">
             {rawText.trim().length > 0 && (
               <button
-                onClick={() => copyToClipboard(rawText)}
+                onClick={() => copyToClipboard(isUser ? (displayPrompt || rawText) : rawText)}
                 className="btn-message-action"
               >
                 {copiedText ? 'COPIED ✓' : 'COPY'}

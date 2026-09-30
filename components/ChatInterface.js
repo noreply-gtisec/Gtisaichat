@@ -387,7 +387,8 @@ export default function ChatInterface({ user, onLogout, onBackToLanding }) {
     const userMsg = {
       id: `msg-${Date.now()}`,
       role: 'user',
-      content: text,
+      content: fullTextPrompt, // Retains full extracted document text so subsequent turns in this chat have complete document context
+      promptText: text,
       attachments: attachments,
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
     };
@@ -633,8 +634,13 @@ export default function ChatInterface({ user, onLogout, onBackToLanding }) {
       })
     );
     const historyWithoutTrailer = messages.filter((m) => m.id !== lastUser.id);
-    // Re-send with the same text; attachments carry display metadata only
-    handleSendMessage(getText(lastUser.content), lastUser.attachments || [], historyWithoutTrailer);
+    // Re-send with promptText if available, or cleanly extract prompt text
+    const resendText = lastUser.promptText || (
+      getText(lastUser.content).includes('\n\n[Attached ')
+        ? getText(lastUser.content).split('\n\n[Attached ')[0].trim()
+        : getText(lastUser.content)
+    );
+    handleSendMessage(resendText, lastUser.attachments || [], historyWithoutTrailer);
   };
 
   const handleStopStream = () => {
