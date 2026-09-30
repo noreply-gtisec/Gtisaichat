@@ -53,7 +53,7 @@ export default function ChatInterface({ user, onLogout, onBackToLanding }) {
           if (data.chats && data.chats.length > 0) {
             const formatted = data.chats.map((c) => ({
               id: c._id,
-              title: c.title || 'New Security Audit',
+              title: c.title || 'New Security Chat',
               createdAt: c.createdAt,
               messages: [],
             }));
@@ -129,7 +129,7 @@ export default function ChatInterface({ user, onLogout, onBackToLanding }) {
     const newId = `chat-${Date.now()}`;
     const newChatObj = {
       id: newId,
-      title: 'New Security Audit',
+      title: 'New Security Chat',
       createdAt: new Date().toISOString(),
       messages: [],
     };
@@ -152,7 +152,7 @@ export default function ChatInterface({ user, onLogout, onBackToLanding }) {
 
   const handleSendMessage = async (text, attachments = []) => {
     let currentChatId = activeChatId;
-    const titleText = text || (attachments.length > 0 ? `File: ${attachments[0].name}` : 'New Audit');
+    const titleText = text || (attachments.length > 0 ? `File: ${attachments[0].name}` : 'New Chat');
 
     if (!currentChatId || !activeChat) {
       const newId = `chat-${Date.now()}`;

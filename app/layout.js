@@ -7,9 +7,9 @@ export const viewport = {
 };
 
 export const metadata = {
-  title: 'GTIS — Enterprise AI Cybersecurity & Threat Defense Engine',
-  description: 'Precision AI cybersecurity and managed threat intelligence platform. Autonomous SOC monitoring, zero-trust vulnerability defense, cloud hardening, and continuous compliance.',
-  keywords: 'cybersecurity, GTIS AI, threat detection, zero trust, SOC monitoring, managed security, cloud hardening, compliance automation',
+  title: 'Zyra — GTIS Enterprise Cybersecurity AI Chatbot',
+  description: 'Intelligent AI cybersecurity assistant for threat intelligence, zero-trust architecture, compliance mapping, and enterprise vulnerability analysis.',
+  keywords: 'GTIS AI, Zyra, cybersecurity chatbot, AI security assistant, threat intelligence, zero trust, SOC assistant',
   authors: [{ name: 'GTIS Cybersecurity' }],
   icons: {
     icon: '/icon.png',
@@ -17,8 +17,8 @@ export const metadata = {
     apple: '/icon.png',
   },
   openGraph: {
-    title: 'GTIS — Enterprise AI Cybersecurity & Threat Defense Engine',
-    description: 'Precision AI cybersecurity and managed threat intelligence platform typesetting threat math like a technical manual.',
+    title: 'Zyra — GTIS Enterprise Cybersecurity AI Chatbot',
+    description: 'Intelligent AI cybersecurity assistant for threat intelligence, zero-trust architecture, compliance mapping, and enterprise vulnerability analysis.',
     type: 'website',
   },
 };

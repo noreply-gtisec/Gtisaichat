@@ -5,36 +5,44 @@ import Image from 'next/image';
 import Link from 'next/link';
 
 export default function Navbar({
-  mobileMenuOpen,
-  setMobileMenuOpen,
   user,
   onOpenGoogleLogin,
-  onLogout
+  onOpenChat,
+  onLogout,
 }) {
   return (
     <header className="site-header">
       <div className="container nav-container">
-        <Link href="/" className="brand-wordmark" aria-label="GTIS home">
-  <Image
-    src="/logo.png"
-    alt="GTIS"
-    width={100}
-    height={50}
-    priority
-  />
-</Link>
-
-       
+        <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+          <Link href="/" className="brand-wordmark" aria-label="GTIS home">
+            <Image
+              src="/logo.png"
+              alt="GTIS"
+              width={100}
+              height={50}
+              priority
+            />
+          </Link>
+          </div>
 
         <div className="nav-actions">
           {user ? (
-            <div className="user-profile-badge">
-              <span className="user-avatar">{user.name.charAt(0)}</span>
-              <span>{user.name}</span>
-              <button onClick={onLogout} className="btn-logout" title="Sign Out">
-                LOGOUT
+            <>
+              <button
+                onClick={onOpenChat}
+                className="btn btn-ghost"
+                style={{ height: '40px', fontSize: '12px', padding: '0 16px' }}
+              >
+                OPEN CHAT ▸
               </button>
-            </div>
+              <div className="user-profile-badge">
+                <span className="user-avatar">{user.name.charAt(0)}</span>
+                <span>{user.name}</span>
+                <button onClick={onLogout} className="btn-logout" title="Sign Out">
+                  LOGOUT
+                </button>
+              </div>
+            </>
           ) : (
             <button
               onClick={onOpenGoogleLogin}
@@ -46,17 +54,15 @@ export default function Navbar({
             </button>
           )}
 
-          <a href="https://gtis.ai/contact" className="btn btn-primary-blue" style={{ height: '40px', fontSize: '13px', padding: '0 18px' }}>
+          <a
+            href="https://gtis.ai/contact"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="btn btn-primary-blue"
+            style={{ height: '40px', fontSize: '13px', padding: '0 18px', textDecoration: 'none' }}
+          >
             BOOK A CALL ▸
           </a>
-
-          <button
-            className="mobile-menu-toggle"
-            onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-            aria-label="Toggle Navigation Menu"
-          >
-            {mobileMenuOpen ? 'CLOSE' : 'MENU'}
-          </button>
         </div>
       </div>
     </header>

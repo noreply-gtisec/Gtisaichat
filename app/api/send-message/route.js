@@ -58,7 +58,7 @@ export async function POST(req) {
           ? contentString.substring(0, 100000) + '\n\n[... Document truncated for storage ...]'
           : contentString;
 
-        let titleString = contentString || 'New Audit';
+        let titleString = contentString || 'New Chat';
         if (typeof rawContent === 'string') {
           titleString = rawContent;
         } else if (Array.isArray(rawContent)) {

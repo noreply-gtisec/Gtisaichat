@@ -46,7 +46,7 @@ export async function POST(req) {
           updatedAt: new Date(),
         },
         $setOnInsert: {
-          title: String(content).slice(0, 40) || 'New Security Audit',
+          title: String(content).slice(0, 40) || 'New Security Chat',
           createdAt: new Date(),
         },
       },
