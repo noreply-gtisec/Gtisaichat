@@ -1851,3 +1851,47 @@ h1, h2, h3, h4, .serif-heading {
   }
 }
 
+/* ── Simple Searching Loader ── */
+.simple-searching-loader {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  color: var(--text-smoke);
+  font-family: var(--font-mono);
+  padding: 4px 0;
+  animation: fadeIn 0.2s ease-out;
+}
+
+.simple-spinner {
+  width: 14px;
+  height: 14px;
+  border: 2px solid rgba(43, 89, 209, 0.25);
+  border-top-color: var(--cta-lake-blue);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+  display: inline-block;
+  flex-shrink: 0;
+}
+
+/* Streaming inline cursor */
+.streaming-cursor {
+  display: inline-block;
+  color: var(--cta-lake-blue);
+  font-weight: 700;
+  margin-left: 2px;
+  animation: blinkCursor 0.8s infinite;
+  user-select: none;
+}
+
+@keyframes blinkCursor {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0;
+  }
+}
+
+
+

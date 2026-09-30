@@ -525,11 +525,12 @@ export default function ChatInterface({ user, onLogout, onBackToLanding }) {
                 onSelectSuggestion={(prompt) => handleSendMessage(prompt)}
               />
             ) : (
-              messages.map((msg) => (
+              messages.map((msg, idx) => (
                 <ChatMessage
                   key={msg.id}
                   message={msg}
                   user={user}
+                  isStreaming={isStreaming && idx === messages.length - 1 && msg.role === 'assistant'}
                   onRegenerate={() => {
                     const lastUser = [...messages].reverse().find((m) => m.role === 'user');
                     if (lastUser) handleSendMessage(lastUser.content, lastUser.attachments);

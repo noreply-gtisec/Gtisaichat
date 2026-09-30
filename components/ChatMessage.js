@@ -1,8 +1,17 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 
-export default function ChatMessage({ message, user, onRegenerate, onCopy }) {
+function SearchingLoader() {
+  return (
+    <div className="simple-searching-loader">
+      <span className="simple-spinner" aria-hidden="true" />
+      <span>Searching...</span>
+    </div>
+  );
+}
+
+export default function ChatMessage({ message, user, isStreaming, onRegenerate, onCopy }) {
   const [copiedCodeIndex, setCopiedCodeIndex] = useState(null);
   const [copiedText, setCopiedText] = useState(false);
   const [thoughtOpen, setThoughtOpen] = useState(false);
@@ -259,25 +268,42 @@ export default function ChatMessage({ message, user, onRegenerate, onCopy }) {
         )}
 
         <div className="message-bubble">
-          {renderFormattedContent(message.content)}
-        </div>
-
-        <div style={{ display: 'flex', gap: '12px', marginTop: '8px' }}>
-          <button
-            onClick={() => copyToClipboard(message.content)}
-            style={{ background: 'transparent', border: 'none', fontSize: '12px', color: 'var(--text-smoke)', cursor: 'pointer' }}
-          >
-            {copiedText ? 'COPIED ✓' : 'COPY'}
-          </button>
-          {!isUser && onRegenerate && (
-            <button
-              onClick={onRegenerate}
-              style={{ background: 'transparent', border: 'none', fontSize: '12px', color: 'var(--text-smoke)', cursor: 'pointer' }}
-            >
-              REGENERATE
-            </button>
+          {!isUser && (!message.content || message.content.trim() === '') ? (
+            isStreaming ? (
+              <SearchingLoader />
+            ) : (
+              <span style={{ color: 'var(--text-smoke)', fontStyle: 'italic', fontSize: '13px' }}>
+                No response received. Please try again.
+              </span>
+            )
+          ) : (
+            <>
+              {renderFormattedContent(message.content)}
+              {isStreaming && !isUser && (
+                <span className="streaming-cursor" title="Generating...">▍</span>
+              )}
+            </>
           )}
         </div>
+
+        {message.content && message.content.trim().length > 0 && (
+          <div style={{ display: 'flex', gap: '12px', marginTop: '8px' }}>
+            <button
+              onClick={() => copyToClipboard(message.content)}
+              style={{ background: 'transparent', border: 'none', fontSize: '12px', color: 'var(--text-smoke)', cursor: 'pointer' }}
+            >
+              {copiedText ? 'COPIED ✓' : 'COPY'}
+            </button>
+            {!isUser && onRegenerate && !isStreaming && (
+              <button
+                onClick={onRegenerate}
+                style={{ background: 'transparent', border: 'none', fontSize: '12px', color: 'var(--text-smoke)', cursor: 'pointer' }}
+              >
+                REGENERATE
+              </button>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );
