@@ -4,6 +4,7 @@ import { decryptApiKey } from '../../../lib/crypto';
 import { getAuthUser } from '../../../lib/authServer';
 import { getText, trimHistory, sanitizeAttachments } from '../../../lib/history';
 import { withTiming } from '../../../lib/withTiming';
+import { retrieveRelevantChunks } from '../../../lib/chunkRetriever';
 
 // Stored user messages are plain strings — never base64/raw file bytes
 const MAX_STORED_CONTENT_CHARS = 100000;
@@ -13,7 +14,7 @@ async function handlePost(req) {
     // 1. Authenticate user via shared auth helper
     const authenticatedUser = await getAuthUser(req);
 
-    const { chatId, model, messages, attachments } = await req.json();
+    const { chatId, model, messages, attachments, documentChunks } = await req.json();
 
     if (!messages || !Array.isArray(messages) || messages.length === 0) {
       return NextResponse.json({ error: 'Messages array is required' }, { status: 400 });
@@ -25,6 +26,7 @@ async function handlePost(req) {
 
     const userId = authenticatedUser.id;
     const userEmail = authenticatedUser.email;
+    const activeChatId = chatId || `chat-${Date.now()}`;
 
     // 2. Lookup per-user API Key from MongoDB (no fallback — each user must have their own key)
     let effectiveApiKey = null;
@@ -47,7 +49,6 @@ async function handlePost(req) {
 
         // Save the user's prompt to MongoDB BEFORE calling the model, so a
         // reload mid-response never loses it
-        const activeChatId = chatId || `chat-${Date.now()}`;
         const latestUserMsg = messages[messages.length - 1];
         const contentString = getText(latestUserMsg?.content);
 
@@ -56,7 +57,7 @@ async function handlePost(req) {
           : contentString;
 
         // Run MongoDB writes concurrently to prevent delaying stream startup
-        await Promise.all([
+        const dbWrites = [
           db.collection('messages').insertOne({
             chatId: activeChatId,
             userId: userId,
@@ -79,7 +80,23 @@ async function handlePost(req) {
             },
             { upsert: true }
           ),
-        ]);
+        ];
+
+        // Persist RAG document chunks if the frontend sent them (first message with a file)
+        if (Array.isArray(documentChunks) && documentChunks.length > 0) {
+          const chunkDocs = documentChunks.map((c) => ({
+            chatId: activeChatId,
+            userId: userId,
+            fileName: c.fileName || 'unknown',
+            chunkIndex: c.chunkIndex,
+            text: c.text,
+            createdAt: new Date(),
+          }));
+          dbWrites.push(db.collection('document_chunks').insertMany(chunkDocs));
+          console.log(`Saved ${chunkDocs.length} document chunks for chat ${activeChatId}`);
+        }
+
+        await Promise.all(dbWrites);
       }
     } catch (dbErr) {
       console.error('MongoDB save of user message failed:', dbErr.message);
@@ -128,6 +145,61 @@ Format every response in clean Markdown. Start directly with the answer, no fill
       );
     }
 
+    // ── RAG Retrieval: inject relevant document chunks into Zyra's context ──
+    // If the user has uploaded documents in this chat, fetch chunks from MongoDB,
+    // ask stealth/space-bunny-alpha which ones are relevant, and prepend only
+    // those to the newest user message so Zyra answers from the document.
+    try {
+      if (process.env.MONGODB_URI) {
+        const mongoClient = await clientPromise;
+        const db = mongoClient.db('aichat');
+
+        const storedChunks = await db
+          .collection('document_chunks')
+          .find({ chatId: activeChatId })
+          .sort({ chunkIndex: 1 })
+          .toArray();
+
+        if (storedChunks.length > 0) {
+          console.log(`RAG: Found ${storedChunks.length} document chunks for chat ${activeChatId}`);
+
+          // Ask stealth/space-bunny-alpha to pick the most relevant chunks
+          const userQuestion = getText(messages[messages.length - 1]?.content);
+          const relevantChunks = await retrieveRelevantChunks(
+            userQuestion,
+            storedChunks,
+            effectiveApiKey
+          );
+
+          if (relevantChunks.length > 0) {
+            // Build the grounded context block
+            const contextBlock = relevantChunks
+              .map((c) => `[From: ${c.fileName}, Section ${c.chunkIndex}]\n${c.text}`)
+              .join('\n\n---\n\n');
+
+            const groundedPrefix = `The following verified excerpts were retrieved from the user's uploaded document(s). Answer the user's question using ONLY these excerpts. If the excerpts do not contain enough information to answer, state clearly that the uploaded document does not mention it.\n\n--- DOCUMENT EXCERPTS ---\n${contextBlock}\n--- END EXCERPTS ---\n\n`;
+
+            // Inject the context into the newest user message in the trimmed history
+            const newestIdx = kept.length - 1;
+            if (newestIdx >= 0 && kept[newestIdx].role === 'user') {
+              const originalContent = getText(kept[newestIdx].content);
+              kept[newestIdx] = {
+                ...kept[newestIdx],
+                content: groundedPrefix + originalContent,
+              };
+            }
+
+            console.log(`RAG: Injected ${relevantChunks.length} relevant chunks into Zyra's context`);
+          } else {
+            console.log('RAG: Retriever found no relevant chunks for this query — proceeding without document context');
+          }
+        }
+      }
+    } catch (ragErr) {
+      // RAG is non-blocking — if it fails, Zyra still answers normally
+      console.warn('RAG retrieval failed (non-fatal):', ragErr.message);
+    }
+
     // Bound the upstream call: undici fetch has no default timeout, so a DNS/network
     // stall against openrouter.ai would hang this request forever
     const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
@@ -143,7 +215,7 @@ Format every response in clean Markdown. Start directly with the answer, no fill
         messages: kept,
         stream: true,
       }),
-      signal: AbortSignal.timeout(120000),
+      signal: AbortSignal.timeout(300000),
     });
 
     if (!response.ok) {
@@ -162,7 +234,7 @@ Format every response in clean Markdown. Start directly with the answer, no fill
   } catch (error) {
     console.error('Error in /api/send-message route:', error);
     const msg = error.name === 'TimeoutError'
-      ? 'The AI provider did not respond within 120s (network timeout). Please try again.'
+      ? 'The AI provider did not respond within 300s (network timeout). Please try again.'
       : error.message;
     return NextResponse.json({ error: msg }, { status: 500 });
   }

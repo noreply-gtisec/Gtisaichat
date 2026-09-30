@@ -480,6 +480,12 @@ export default function ChatInterface({ user, onLogout, onBackToLanding }) {
         driveFileId: att.driveFileId || null,
       }));
 
+      // Collect RAG document chunks from all attachments (sent only on the
+      // first message with file uploads — subsequent turns skip this).
+      const documentChunks = attachments.flatMap((att) =>
+        (att.chunks || []).map((c) => ({ ...c, fileName: att.name }))
+      );
+
       const response = await fetch('/api/send-message', {
         method: 'POST',
         headers,
@@ -488,6 +494,7 @@ export default function ChatInterface({ user, onLogout, onBackToLanding }) {
           model: targetModel,
           messages: apiMessages,
           attachments: attachmentMeta,
+          documentChunks: documentChunks.length > 0 ? documentChunks : undefined,
         }),
         signal: abortControllerRef.current.signal,
       });

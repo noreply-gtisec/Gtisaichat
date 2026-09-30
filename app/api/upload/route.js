@@ -2,9 +2,11 @@ import { NextResponse } from 'next/server';
 import { uploadFileToDrive } from '../../../lib/gdrive';
 import { getAuthUser } from '../../../lib/authServer';
 import { withTiming } from '../../../lib/withTiming';
+import { chunkDocumentText } from '../../../lib/chunker';
 
 // Cap on extracted document text (server-side) — keeps chats and prompts small
-const MAX_EXTRACTED_CHARS = 20000;
+// Increased from 20,000 to 8,000,000 now that RAG chunking is implemented.
+const MAX_EXTRACTED_CHARS = 8000000;
 
 // Server-side upload policy: 10 MB max, images (png/jpeg/webp) and PDF only
 const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024; // 10 MB
@@ -105,11 +107,21 @@ async function handlePost(req) {
       // Not a fatal error — PDF text extraction still works without Drive
     }
 
+    // ── Step 3: Generate document chunks for RAG retrieval ──
+    // Chunks are returned to the frontend and persisted to MongoDB when the
+    // user actually sends a message (at that point chatId is known).
+    let chunks = [];
+    if (extractedText && extractedText.trim().length >= 50) {
+      chunks = chunkDocumentText(extractedText);
+      console.log(`Document chunked: ${file.name} → ${chunks.length} chunks`);
+    }
+
     return NextResponse.json({
       success: true,
       file: driveResult,
       extractedText,
       pageCount,
+      chunks,
     });
   } catch (error) {
     console.error('Upload route error:', error);

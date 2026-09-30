@@ -68,6 +68,7 @@ export default function ChatInput({ onSendMessage, isStreaming, onStopStream }) 
       let dataUrl = null;
       let textContent = null;
       let pageCount = null;
+      let documentChunks = [];
 
       if (isImage) {
         // Read image as base64 data URL for preview and multimodal API
@@ -119,6 +120,10 @@ export default function ChatInput({ onSendMessage, isStreaming, onStopStream }) 
               textContent = data.extractedText;
               pageCount = data.pageCount || null;
             }
+            // Capture RAG chunks for later persistence in send-message
+            if (data.chunks && data.chunks.length > 0) {
+              documentChunks = data.chunks;
+            }
           } else {
             uploadError = data.error || 'Upload failed on server';
           }
@@ -153,6 +158,7 @@ export default function ChatInput({ onSendMessage, isStreaming, onStopStream }) 
           driveUrl,
           driveFileId,
           uploadError,
+          chunks: documentChunks,
         },
       ]);
     }
