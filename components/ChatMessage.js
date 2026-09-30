@@ -159,12 +159,12 @@ function ChatMessageBase({ message, user, isStreaming, onRegenerate, onCopy }) {
       </div>
 
       <div className="message-content-wrapper">
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <div className="message-header">
           <span className="message-role-label">
             {isUser ? (user?.name || 'YOU') : 'ZYRA • GTIS AI'}
           </span>
           {message.timestamp && (
-            <span style={{ fontSize: '11px', color: 'var(--text-smoke)' }}>
+            <span className="message-timestamp">
               {message.timestamp}
             </span>
           )}
@@ -172,7 +172,7 @@ function ChatMessageBase({ message, user, isStreaming, onRegenerate, onCopy }) {
 
         {/* Attached Files & Images Rendering */}
         {message.attachments && message.attachments.length > 0 && (
-          <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', marginBottom: '10px' }}>
+          <div className="message-attachments">
             {message.attachments.map((att, aIdx) => {
               // Convert Google Drive file ID to a direct image rendering URL
               const directDriveImgUrl = att.driveFileId ? `https://drive.google.com/thumbnail?id=${att.driveFileId}&sz=w800` : null;
@@ -331,11 +331,11 @@ function ChatMessageBase({ message, user, isStreaming, onRegenerate, onCopy }) {
         </div>
 
         {(rawText.trim().length > 0 || (!isUser && !isStreaming && onRegenerate)) && (
-          <div style={{ display: 'flex', gap: '12px', marginTop: '8px' }}>
+          <div className="message-actions">
             {rawText.trim().length > 0 && (
               <button
                 onClick={() => copyToClipboard(rawText)}
-                style={{ background: 'transparent', border: 'none', fontSize: '12px', color: 'var(--text-smoke)', cursor: 'pointer' }}
+                className="btn-message-action"
               >
                 {copiedText ? 'COPIED ✓' : 'COPY'}
               </button>
@@ -343,7 +343,7 @@ function ChatMessageBase({ message, user, isStreaming, onRegenerate, onCopy }) {
             {!isUser && onRegenerate && !isStreaming && (
               <button
                 onClick={onRegenerate}
-                style={{ background: 'transparent', border: 'none', fontSize: '12px', color: 'var(--text-smoke)', cursor: 'pointer' }}
+                className="btn-message-action"
               >
                 REGENERATE
               </button>
