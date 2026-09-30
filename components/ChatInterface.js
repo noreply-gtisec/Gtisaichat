@@ -8,6 +8,7 @@ import ChatInput from './ChatInput';
 import EmptyState from './EmptyState';
 
 import { supabase } from '../lib/supabaseClient';
+import { getText } from '../lib/history';
 
 // Store only the active thread pointer in sessionStorage (ephemeral, cleared on tab close)
 const ACTIVE_CHAT_KEY = 'gtis-active-chat';
