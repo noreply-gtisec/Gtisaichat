@@ -3,6 +3,8 @@
 import { useState, useRef, useEffect } from 'react';
 import { supabase } from '../lib/supabaseClient';
 
+const DRAFT_KEY = 'gtis-draft';
+
 export default function ChatInput({ onSendMessage, isStreaming, onStopStream }) {
   const [input, setInput] = useState('');
   const [attachments, setAttachments] = useState([]);
@@ -10,6 +12,29 @@ export default function ChatInput({ onSendMessage, isStreaming, onStopStream }) 
   const [uploadFileName, setUploadFileName] = useState('');
   const textareaRef = useRef(null);
   const fileInputRef = useRef(null);
+
+  // Restore the draft text once on mount so a reload mid-typing keeps it (PART 3.5)
+  useEffect(() => {
+    try {
+      const draft = window.sessionStorage.getItem(DRAFT_KEY);
+      if (draft) setInput(draft);
+    } catch {
+      // sessionStorage unavailable — no draft restore, harmless
+    }
+  }, []);
+
+  // Persist the draft as a small sessionStorage value (debounced via effect coalescing)
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      try {
+        if (input) window.sessionStorage.setItem(DRAFT_KEY, input);
+        else window.sessionStorage.removeItem(DRAFT_KEY);
+      } catch {
+        // ignore quota / private mode
+      }
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [input]);
 
   useEffect(() => {
     if (textareaRef.current) {
@@ -148,6 +173,11 @@ export default function ChatInput({ onSendMessage, isStreaming, onStopStream }) 
     onSendMessage(input.trim(), attachments);
     setInput('');
     setAttachments([]);
+    try {
+      window.sessionStorage.removeItem(DRAFT_KEY);
+    } catch {
+      // ignore
+    }
     if (textareaRef.current) {
       textareaRef.current.style.height = 'auto';
     }
@@ -239,7 +269,7 @@ export default function ChatInput({ onSendMessage, isStreaming, onStopStream }) 
               ref={fileInputRef}
               onChange={handleFileSelect}
               multiple
-              accept="image/*,.pdf,.doc,.docx,.txt,.csv,.json,.py,.js,.html,.css"
+              accept="image/png,image/jpeg,image/webp,.pdf"
               style={{ display: 'none' }}
             />
 

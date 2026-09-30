@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import ChatInterface from '../../components/ChatInterface';
+import AppErrorBoundary from '../../components/AppErrorBoundary';
 import { supabase } from '../../lib/supabaseClient';
 import { validateDomain, formatUserData } from '../../lib/authHelper';
 
@@ -141,10 +142,12 @@ export default function ChatPage() {
   }
 
   return (
-    <ChatInterface
-      user={user}
-      onLogout={handleLogout}
-      onBackToLanding={() => router.push('/?landing=true')}
-    />
+    <AppErrorBoundary>
+      <ChatInterface
+        user={user}
+        onLogout={handleLogout}
+        onBackToLanding={() => router.push('/?landing=true')}
+      />
+    </AppErrorBoundary>
   );
 }

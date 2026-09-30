@@ -1,23 +1,77 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
+import { useRouter } from 'next/navigation';
 import ChatSidebar from './ChatSidebar';
 import ChatMessage from './ChatMessage';
 import ChatInput from './ChatInput';
 import EmptyState from './EmptyState';
 
 import { supabase } from '../lib/supabaseClient';
+import { getText } from '../lib/history';
+
+// Small local cache only: 20 chats × 20 messages, text without attachments.
+// The server is the source of truth — this just paints the sidebar instantly.
+const CACHE_MAX_CHATS = 20;
+const CACHE_MAX_MSGS = 20;
+const ACTIVE_CHAT_KEY = 'gtis-active-chat';
+const CHATS_CACHE_KEY = 'gtis-chats-cache';
+const PAGE_SIZE = 20;
+
+function safeReadLS(key) {
+  try {
+    return window.localStorage.getItem(key);
+  } catch {
+    return null; // private mode / quota — ignore, server data still loads
+  }
+}
+
+function safeWriteLS(key, value) {
+  try {
+    window.localStorage.setItem(key, value);
+  } catch {
+    // QuotaExceededError etc. must never break the UI
+  }
+}
+
+// Lightweight skeleton so the screen is never blank while loading (PART 3.2)
+function MessageSkeleton() {
+  return (
+    <div className="message-skeleton" aria-hidden="true">
+      {[0, 1, 2].map((i) => (
+        <div key={i} className="skeleton-row" style={{ flexDirection: i % 2 === 0 ? 'row' : 'row-reverse' }}>
+          <div className="skeleton-avatar" />
+          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '8px', maxWidth: '70%' }}>
+            <div className="skeleton-line" style={{ width: '60%' }} />
+            <div className="skeleton-line" style={{ width: '90%' }} />
+            <div className="skeleton-line" style={{ width: '75%' }} />
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
 
 export default function ChatInterface({ user, onLogout, onBackToLanding }) {
+  const router = useRouter();
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [models, setModels] = useState([]);
   const [selectedModel, setSelectedModel] = useState('openai/gpt-6-luna-pro');
   const [isStreaming, setIsStreaming] = useState(false);
   const [chats, setChats] = useState([]);
   const [activeChatId, setActiveChatId] = useState(null);
+  const [chatsLoading, setChatsLoading] = useState(true);
+  const [chatsError, setChatsError] = useState(null);
+  const [msgsLoading, setMsgsLoading] = useState(false);
+  const [earlierLoading, setEarlierLoading] = useState(false);
+  const [hasMoreEarlier, setHasMoreEarlier] = useState(false);
 
   const messagesEndRef = useRef(null);
+  const scrollRef = useRef(null);
   const abortControllerRef = useRef(null);
+  const oldestCursorRef = useRef(null); // createdAt of the oldest loaded message
+  const prependRestoreRef = useRef(null); // { height, top } captured before prepending older page
+  const loadedChatRef = useRef(new Set()); // chatIds already loaded or loading
 
 
   // Fetch available models dynamically from OpenRouter backend catalog
@@ -38,81 +92,163 @@ export default function ChatInterface({ user, onLogout, onBackToLanding }) {
     fetchModels();
   }, []);
 
-  // Load chat threads from MongoDB on user load
-  useEffect(() => {
-    async function loadUserChats() {
+  // Load chat threads from MongoDB on user load (server is the source of truth)
+  const loadChatList = useCallback(async () => {
+    setChatsLoading(true);
+    setChatsError(null);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const headers = session?.access_token
+        ? { Authorization: `Bearer ${session.access_token}` }
+        : {};
+
+      const res = await fetch('/api/chat-history', { headers });
+      if (!res.ok) throw new Error(`Chat list request failed (HTTP ${res.status})`);
+      const data = await res.json();
+
+      // Instant sidebar paint from the small local cache for chats the server
+      // hasn't returned (e. g. brand-new local chats keep their state)
+      let cached = [];
       try {
-        const { data: { session } } = await supabase.auth.getSession();
-        const headers = session?.access_token
-          ? { Authorization: `Bearer ${session.access_token}` }
-          : {};
-
-        const res = await fetch('/api/chat-history', { headers });
-        if (res.ok) {
-          const data = await res.json();
-          if (data.chats && data.chats.length > 0) {
-            const formatted = data.chats.map((c) => ({
-              id: c._id,
-              title: c.title || 'New Security Chat',
-              createdAt: c.createdAt,
-              messages: [],
-            }));
-            setChats(formatted);
-            setActiveChatId(formatted[0].id);
-          } else {
-            setChats([]);
-            setActiveChatId(null);
-          }
-        }
-      } catch (err) {
-        console.error('Failed to load chats from MongoDB:', err);
+        cached = JSON.parse(safeReadLS(CHATS_CACHE_KEY) || '[]');
+      } catch {
+        cached = [];
       }
-    }
-    loadUserChats();
-  }, [user]);
 
-  // Load messages for active chat thread from MongoDB if empty
+      const serverChats = (data.chats || []).map((c) => ({
+        id: c._id,
+        title: typeof c.title === 'string' ? c.title : 'New Security Chat',
+        createdAt: c.createdAt,
+        updatedAt: c.updatedAt,
+        messages: [],
+        loaded: false,
+      }));
+      const cachedOnly = cached.filter(
+        (cc) => cc.id && !serverChats.some((sc) => sc.id === cc.id) && String(cc.id).startsWith('chat-')
+      ).map((cc) => ({ ...cc, messages: cc.messages || [], loaded: false }));
+
+      const merged = [...cachedOnly, ...serverChats];
+      setChats(merged);
+
+      // Reopen target: ?chatId= in the URL > last-active in localStorage > newest chat
+      const urlChatId = new URLSearchParams(window.location.search).get('chatId');
+      const storedChatId = safeReadLS(ACTIVE_CHAT_KEY);
+      const target =
+        merged.find((c) => c.id === urlChatId) ||
+        merged.find((c) => c.id === storedChatId) ||
+        merged[0] || null;
+      setActiveChatId(target ? target.id : null);
+    } catch (err) {
+      console.error('Failed to load chats from MongoDB:', err);
+      setChatsError(err.message);
+    } finally {
+      setChatsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (user) loadChatList();
+  }, [user, loadChatList]);
+
+  // Load one page of messages (newest 20) when a chat opens and has none yet.
+  // A ref (not `chats`) tracks which chats are already loaded/loading, so this
+  // effect depends only on activeChatId and cannot re-trigger itself (PART 2.6).
   useEffect(() => {
     if (!activeChatId) return;
-    const currentChat = chats.find((c) => c.id === activeChatId);
-    if (currentChat && currentChat.messages && currentChat.messages.length > 0) return;
+    if (loadedChatRef.current.has(activeChatId)) return;
+    loadedChatRef.current.add(activeChatId);
+
+    let cancelled = false;
 
     async function loadChatMessages() {
+      setMsgsLoading(true);
       try {
         const { data: { session } } = await supabase.auth.getSession();
         const headers = session?.access_token
           ? { Authorization: `Bearer ${session.access_token}` }
           : {};
 
-        const res = await fetch(`/api/chat-history?chatId=${activeChatId}`, { headers });
-        if (res.ok) {
-          const data = await res.json();
-          if (data.messages) {
-            setChats((prev) =>
-              prev.map((c) => {
-                if (c.id === activeChatId) {
-                  return {
-                    ...c,
-                    messages: data.messages.map((m) => ({
-                      id: m._id,
-                      role: m.role,
-                      content: m.content,
-                      attachments: m.attachments || [],
-                      timestamp: m.createdAt ? new Date(m.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '',
-                    })),
-                  };
-                }
-                return c;
-              })
-            );
-          }
+        const res = await fetch(`/api/chat-history?chatId=${encodeURIComponent(activeChatId)}`, { headers });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        if (cancelled) return;
+
+        // Server returns newest-first; display oldest-to-newest
+        const loaded = (data.messages || []).map((m) => ({
+          id: m._id,
+          role: m.role,
+          content: m.content,
+          attachments: m.attachments || [],
+          timestamp: m.createdAt ? new Date(m.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '',
+        })).reverse();
+
+        // If the saved thread ends on a user message, the reply was interrupted
+        // (page closed mid-stream). Show an empty assistant bubble with Regenerate.
+        if (loaded.length > 0 && loaded[loaded.length - 1].role === 'user') {
+          loaded.push({
+            id: `interrupted-${activeChatId}`,
+            role: 'assistant',
+            content: '',
+            attachments: [],
+            timestamp: '',
+          });
         }
+
+        setChats((prev) =>
+          prev.map((c) => (c.id === activeChatId ? { ...c, messages: loaded, loaded: true } : c))
+        );
+        setHasMoreEarlier(!!data.hasMore);
+        oldestCursorRef.current = data.oldestDate || null;
       } catch (err) {
-        console.error('Failed to load thread messages:', err);
+        loadedChatRef.current.delete(activeChatId); // allow Retry to re-fetch
+        if (!cancelled) {
+          console.error('Failed to load thread messages:', err);
+          setChatsError(err.message); // inline error banner offers Retry
+        }
+      } finally {
+        if (!cancelled) setMsgsLoading(false);
       }
     }
     loadChatMessages();
+    return () => { cancelled = true; };
   }, [activeChatId]);
+
+  // Keep ?chatId= in the URL and localStorage in sync so a reload reopens this chat
+  useEffect(() => {
+    if (!activeChatId) return;
+    safeWriteLS(ACTIVE_CHAT_KEY, activeChatId);
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('chatId') !== activeChatId) {
+      params.set('chatId', activeChatId);
+      router.replace(`/chat?${params.toString()}`, { scroll: false });
+    }
+  }, [activeChatId, router]);
+
+  // Debounced tiny cache (1s, 20 chats x 20 messages, no attachments) — wrapped
+  // in try/catch so a QuotaExceededError can never break the app
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      try {
+        const slim = chats.slice(0, CACHE_MAX_CHATS).map((c) => ({
+          id: c.id,
+          title: c.title,
+          createdAt: c.createdAt,
+          updatedAt: c.updatedAt,
+          loaded: c.loaded,
+          messages: c.messages.slice(-CACHE_MAX_MSGS).map((m) => ({
+            id: m.id,
+            role: m.role,
+            content: getText(m.content).slice(0, 4000),
+            timestamp: m.timestamp,
+          })),
+        }));
+        safeWriteLS(CHATS_CACHE_KEY, JSON.stringify(slim));
+      } catch {
+        // storage full/unavailable — cache is optional, ignore
+      }
+    }, 1000);
+    return () => clearTimeout(timer);
+  }, [chats]);
 
   const activeChat = chats.find((c) => c.id === activeChatId);
   const messages = activeChat ? activeChat.messages : [];
@@ -121,9 +257,61 @@ export default function ChatInterface({ user, onLogout, onBackToLanding }) {
     messagesEndRef.current?.scrollIntoView({ behavior: smooth ? 'smooth' : 'auto' });
   };
 
+  // Prepending older messages must keep the viewport anchored (handled below);
+  // otherwise we stick to the bottom as new content streams in.
   useEffect(() => {
+    // Prepending older messages: keep the viewport anchored to the message the
+    // user was reading instead of scrolling to the bottom
+    if (prependRestoreRef.current && scrollRef.current) {
+      const el = scrollRef.current;
+      el.scrollTop = el.scrollHeight - prependRestoreRef.current.height + prependRestoreRef.current.top;
+      prependRestoreRef.current = null;
+      return;
+    }
+    if (msgsLoading || earlierLoading) return;
     scrollToBottom(!isStreaming);
-  }, [messages, isStreaming]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [messages, isStreaming, msgsLoading]);
+
+  // Load older messages when the user asks (scroll-to-top button)
+  const handleLoadEarlier = async () => {
+    if (!activeChatId || !oldestCursorRef.current || earlierLoading) return;
+    setEarlierLoading(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const headers = session?.access_token
+        ? { Authorization: `Bearer ${session.access_token}` }
+        : {};
+      const res = await fetch(
+        `/api/chat-history?chatId=${encodeURIComponent(activeChatId)}&before=${encodeURIComponent(new Date(oldestCursorRef.current).toISOString())}`,
+        { headers }
+      );
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+
+      const older = (data.messages || []).map((m) => ({
+        id: m._id,
+        role: m.role,
+        content: m.content,
+        attachments: m.attachments || [],
+        timestamp: m.createdAt ? new Date(m.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '',
+      })).reverse();
+
+      if (older.length > 0) {
+        const el = scrollRef.current;
+        prependRestoreRef.current = el ? { height: el.scrollHeight, top: el.scrollTop } : null;
+        setChats((prev) =>
+          prev.map((c) => (c.id === activeChatId ? { ...c, messages: [...older, ...c.messages] } : c))
+        );
+      }
+      setHasMoreEarlier(!!data.hasMore);
+      oldestCursorRef.current = data.oldestDate || oldestCursorRef.current;
+    } catch (err) {
+      console.error('Failed to load earlier messages:', err);
+    } finally {
+      setEarlierLoading(false);
+    }
+  };
 
   const handleNewChat = () => {
     const newId = `chat-${Date.now()}`;
@@ -132,12 +320,17 @@ export default function ChatInterface({ user, onLogout, onBackToLanding }) {
       title: 'New Security Chat',
       createdAt: new Date().toISOString(),
       messages: [],
+      loaded: true, // local chat — nothing to fetch from the server
     };
     setChats((prev) => [newChatObj, ...prev]);
     setActiveChatId(newId);
+    loadedChatRef.current.add(newId); // local chat, nothing to fetch
+    setHasMoreEarlier(false);
+    oldestCursorRef.current = null;
   };
 
   const handleDeleteChat = (chatId) => {
+    loadedChatRef.current.delete(chatId);
     setChats((prev) => {
       const updated = prev.filter((c) => c.id !== chatId);
       if (activeChatId === chatId) {
@@ -150,7 +343,7 @@ export default function ChatInterface({ user, onLogout, onBackToLanding }) {
   // Determine active target model string
   const targetModel = selectedModel;
 
-  const handleSendMessage = async (text, attachments = []) => {
+  const handleSendMessage = async (text, attachments = [], historyOverride = null) => {
     let currentChatId = activeChatId;
     const titleText = text || (attachments.length > 0 ? `File: ${attachments[0].name}` : 'New Chat');
 
@@ -161,6 +354,7 @@ export default function ChatInterface({ user, onLogout, onBackToLanding }) {
         title: titleText.slice(0, 30) + '...',
         createdAt: new Date().toISOString(),
         messages: [],
+        loaded: true,
       };
       setChats((prev) => [newChatObj, ...prev]);
       setActiveChatId(newId);
@@ -225,18 +419,15 @@ export default function ChatInterface({ user, onLogout, onBackToLanding }) {
     try {
       abortControllerRef.current = new AbortController();
 
-      // Keep recent conversation history (last 10 turns) with a safety cap on past document text
-      const recentHistory = (activeChat ? activeChat.messages : []).slice(-10);
-      const historyMessages = recentHistory.map((m) => {
-        let content = m.content;
-        if (typeof content === 'string' && content.length > 8000) {
-          content = content.substring(0, 8000) + '\n\n[... Previous message context truncated to preserve token limit ...]';
-        }
-        return {
-          role: m.role,
-          content,
-        };
-      });
+      // History: the server does the token-budget trimming (trimHistory), so we
+      // only send role + flattened text here — never base64 or file payloads
+      const sourceHistory = historyOverride !== null
+        ? historyOverride
+        : (activeChat ? activeChat.messages : []);
+      const historyMessages = sourceHistory.map((m) => ({
+        role: m.role,
+        content: getText(m.content),
+      }));
 
       // Support multimodal OpenRouter payload for image attachments
       const imageAtts = attachments ? attachments.filter((a) => a.isImage && a.dataUrl) : [];
@@ -415,6 +606,29 @@ export default function ChatInterface({ user, onLogout, onBackToLanding }) {
     }
   };
 
+  // Regenerate an interrupted/failed reply: drop the trailing empty assistant
+  // message locally and re-run the last user turn (it is re-saved server-side)
+  const handleRegenerate = () => {
+    if (!activeChat || isStreaming) return;
+    const lastUser = [...messages].reverse().find((m) => m.role === 'user');
+    if (!lastUser) return;
+    setChats((prev) =>
+      prev.map((c) => {
+        if (c.id === activeChatId) {
+          const trimmedMsgs = [...c.messages];
+          while (trimmedMsgs.length > 0 && trimmedMsgs[trimmedMsgs.length - 1].role === 'assistant') {
+            trimmedMsgs.pop();
+          }
+          return { ...c, messages: trimmedMsgs };
+        }
+        return c;
+      })
+    );
+    const historyWithoutTrailer = messages.filter((m) => m.id !== lastUser.id);
+    // Re-send with the same text; attachments carry display metadata only
+    handleSendMessage(getText(lastUser.content), lastUser.attachments || [], historyWithoutTrailer);
+  };
+
   const handleStopStream = () => {
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
@@ -517,9 +731,32 @@ export default function ChatInterface({ user, onLogout, onBackToLanding }) {
         </div>
 
         {/* Messages Stream Container */}
-        <div className="chat-messages-container">
+        <div className="chat-messages-container" ref={scrollRef}>
           <div className="messages-inner">
-            {messages.length === 0 ? (
+            {/* Inline error + Retry — never blank the page */}
+            {chatsError && (
+              <div className="chat-inline-error">
+                <span>{"Couldn't load your chats: "}{chatsError}</span>
+                <button onClick={() => loadChatList()} className="btn-retry">Retry</button>
+              </div>
+            )}
+
+            {/* Load earlier messages (paging) */}
+            {hasMoreEarlier && messages.length > 0 && (
+              <div style={{ textAlign: 'center', padding: '8px 0' }}>
+                <button
+                  onClick={handleLoadEarlier}
+                  disabled={earlierLoading}
+                  className="btn-retry"
+                >
+                  {earlierLoading ? 'Loading…' : 'Load earlier messages'}
+                </button>
+              </div>
+            )}
+
+            {chatsLoading || msgsLoading ? (
+              <MessageSkeleton />
+            ) : messages.length === 0 ? (
               <EmptyState
                 userName={user?.name}
                 onSelectSuggestion={(prompt) => handleSendMessage(prompt)}
@@ -531,10 +768,7 @@ export default function ChatInterface({ user, onLogout, onBackToLanding }) {
                   message={msg}
                   user={user}
                   isStreaming={isStreaming && idx === messages.length - 1 && msg.role === 'assistant'}
-                  onRegenerate={() => {
-                    const lastUser = [...messages].reverse().find((m) => m.role === 'user');
-                    if (lastUser) handleSendMessage(lastUser.content, lastUser.attachments);
-                  }}
+                  onRegenerate={handleRegenerate}
                 />
               ))
             )}

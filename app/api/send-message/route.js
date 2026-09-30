@@ -2,8 +2,13 @@ import { NextResponse } from 'next/server';
 import clientPromise from '../../../lib/mongodb';
 import { decryptApiKey } from '../../../lib/crypto';
 import { getAuthUser } from '../../../lib/authServer';
+import { getText, trimHistory, sanitizeAttachments } from '../../../lib/history';
+import { withTiming } from '../../../lib/withTiming';
 
-export async function POST(req) {
+// Stored user messages are plain strings — never base64/raw file bytes
+const MAX_STORED_CONTENT_CHARS = 100000;
+
+async function handlePost(req) {
   try {
     // 1. Authenticate user via shared auth helper
     const authenticatedUser = await getAuthUser(req);
@@ -40,33 +45,15 @@ export async function POST(req) {
           }
         }
 
-        // Save User's latest prompt to MongoDB history
+        // Save the user's prompt to MongoDB BEFORE calling the model, so a
+        // reload mid-response never loses it
         const activeChatId = chatId || `chat-${Date.now()}`;
         const latestUserMsg = messages[messages.length - 1];
-        let contentString = '';
-        const rawContent = latestUserMsg?.content;
-        if (typeof rawContent === 'string') {
-          contentString = rawContent;
-        } else if (Array.isArray(rawContent)) {
-          const textObj = rawContent.find((item) => item && (item.text || typeof item === 'string'));
-          if (textObj) contentString = textObj.text || String(textObj);
-        } else if (typeof rawContent === 'object' && rawContent?.text) {
-          contentString = rawContent.text;
-        }
+        const contentString = getText(latestUserMsg?.content);
 
-        const savedContent = typeof contentString === 'string' && contentString.length > 100000
-          ? contentString.substring(0, 100000) + '\n\n[... Document truncated for storage ...]'
+        const savedContent = contentString.length > MAX_STORED_CONTENT_CHARS
+          ? contentString.substring(0, MAX_STORED_CONTENT_CHARS) + '\n\n[... Document truncated for storage ...]'
           : contentString;
-
-        let titleString = contentString || 'New Chat';
-        if (typeof rawContent === 'string') {
-          titleString = rawContent;
-        } else if (Array.isArray(rawContent)) {
-          const textObj = rawContent.find((item) => item && (item.text || typeof item === 'string'));
-          if (textObj) titleString = textObj.text || String(textObj);
-        } else if (typeof rawContent === 'object' && rawContent?.text) {
-          titleString = rawContent.text;
-        }
 
         // Run MongoDB writes concurrently to prevent delaying stream startup
         await Promise.all([
@@ -76,7 +63,7 @@ export async function POST(req) {
             userEmail: userEmail,
             role: 'user',
             content: savedContent,
-            attachments: attachments || [],
+            attachments: sanitizeAttachments(attachments),
             createdAt: new Date(),
           }),
           db.collection('chats').updateOne(
@@ -85,7 +72,7 @@ export async function POST(req) {
               $set: {
                 userId: userId,
                 userEmail: userEmail,
-                title: String(titleString).slice(0, 40),
+                title: contentString.slice(0, 40) || 'New Chat',
                 updatedAt: new Date(),
               },
               $setOnInsert: { createdAt: new Date() },
@@ -95,7 +82,11 @@ export async function POST(req) {
         ]);
       }
     } catch (dbErr) {
-      console.warn('MongoDB chat log warning (non-fatal):', dbErr.message);
+      console.error('MongoDB save of user message failed:', dbErr.message);
+      return NextResponse.json(
+        { error: 'Could not save your message to the chat history (database unavailable). Please check your connection and try again.' },
+        { status: 502 }
+      );
     }
 
     if (!effectiveApiKey) {
@@ -123,7 +114,17 @@ You specialize in SecOps monitoring, zero-trust architecture, incident response 
 Respond with high precision, clear technical depth, and clean markdown code snippets when applicable.`
     };
 
-    const formattedMessages = [systemPrompt, ...messages];
+    // Never forward the full conversation: trim to a token budget server-side.
+    // trimHistory keeps the system message + newest user message and strips
+    // attachments/base64 from all older turns.
+    const { kept, newestOverTokens } = trimHistory([systemPrompt, ...messages]);
+
+    if (newestOverTokens) {
+      return NextResponse.json(
+        { error: 'That message is too large to process (over ~200k tokens). Please shorten the text or attach a smaller file, or start a new chat.' },
+        { status: 413 }
+      );
+    }
 
     // Bound the upstream call: undici fetch has no default timeout, so a DNS/network
     // stall against openrouter.ai would hang this request forever
@@ -137,7 +138,7 @@ Respond with high precision, clear technical depth, and clean markdown code snip
       },
       body: JSON.stringify({
         model: openRouterModel,
-        messages: formattedMessages,
+        messages: kept,
         stream: true,
       }),
       signal: AbortSignal.timeout(120000),
@@ -164,3 +165,5 @@ Respond with high precision, clear technical depth, and clean markdown code snip
     return NextResponse.json({ error: msg }, { status: 500 });
   }
 }
+
+export const POST = withTiming('send-message', handlePost);

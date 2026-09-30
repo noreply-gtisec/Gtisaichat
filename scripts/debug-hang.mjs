@@ -202,7 +202,11 @@ async function resolveDbKey() {
       return null;
     }
 
-    const secret = process.env.ENCRYPTION_SECRET || 'gtis-cybersecurity-secret-key-32b';
+    const secret = process.env.ENCRYPTION_SECRET;
+    if (!secret) {
+      console.log(`   ${C.r}ENCRYPTION_SECRET is not set in .env.local — cannot decrypt stored keys${C.x}`);
+      return null;
+    }
     const { createHash, createDecipheriv } = await import('crypto');
     const raw = match.apiKey;
     if (!raw.startsWith('enc:')) {
@@ -216,9 +220,6 @@ async function resolveDbKey() {
     let decrypted = decipher.update(parts[2], 'hex', 'utf8');
     decrypted += decipher.final('utf8');
     console.log(`   ${C.g}loaded key for ${match.email || match.userId}${C.x} (${decrypted.slice(0, 8)}…${decrypted.slice(-4)})`);
-    if (!process.env.ENCRYPTION_SECRET) {
-      console.log(`   ${C.d}note: using the hardcoded default ENCRYPTION_SECRET (matches app behaviour when .env.local omits it)${C.x}`);
-    }
     return decrypted;
   } catch (e) {
     console.log(`   ${C.r}--from-db failed: ${e.message}${C.x}`);

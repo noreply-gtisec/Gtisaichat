@@ -27,6 +27,9 @@ pnpm-debug.log*
 .env.development
 .env.example
 
+# local key-binding input (contains raw API keys) — never commit
+rebind-keys.json
+
 
 # vercel
 .vercel

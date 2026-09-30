@@ -1893,5 +1893,80 @@ h1, h2, h3, h4, .serif-heading {
   }
 }
 
+/* ── Loading skeleton for chat messages (PART 3.2) ── */
+.message-skeleton {
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+  padding: 8px 0;
+}
+
+.skeleton-row {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+}
+
+.skeleton-avatar {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  background: linear-gradient(90deg, var(--card-periwinkle) 25%, var(--border-ash) 37%, var(--card-periwinkle) 63%);
+  background-size: 400% 100%;
+  animation: skeletonShimmer 1.4s ease infinite;
+}
+
+.skeleton-line {
+  height: 12px;
+  border-radius: 6px;
+  background: linear-gradient(90deg, var(--card-periwinkle) 25%, var(--border-ash) 37%, var(--card-periwinkle) 63%);
+  background-size: 400% 100%;
+  animation: skeletonShimmer 1.4s ease infinite;
+}
+
+@keyframes skeletonShimmer {
+  0% { background-position: 100% 50%; }
+  100% { background-position: 0 50%; }
+}
+
+/* ── Inline error banner with Retry (PART 3.3) ── */
+.chat-inline-error {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 14px;
+  margin: 6px 0 14px;
+  border-radius: 10px;
+  font-size: 13px;
+  color: var(--text-off-black);
+  background: rgba(231, 76, 60, 0.10);
+  border: 1px solid rgba(231, 76, 60, 0.40);
+}
+
+.btn-retry {
+  padding: 5px 14px;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--cta-lake-blue);
+  background: transparent;
+  color: var(--cta-lake-blue);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  font-family: var(--font-mono);
+}
+
+.btn-retry:hover:not(:disabled) {
+  background: var(--cta-lake-blue);
+  color: #fff;
+}
+
+.btn-retry:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
 
 

@@ -1,6 +1,32 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, memo, useMemo, Component } from 'react';
+import { getText } from '../lib/history';
+
+// UI-side cap for very long messages — rest hidden behind "Show more"
+const MAX_DISPLAY_CHARS = 20000;
+
+// Catch-all boundary so one malformed message can never crash the whole chat
+function MessageErrorBoundaryFallback() {
+  return (
+    <div style={{ padding: '10px 14px', margin: '6px 0', borderRadius: '10px', background: 'rgba(231, 76, 60, 0.08)', border: '1px solid rgba(231, 76, 60, 0.35)', color: 'var(--text-smoke)', fontSize: '13px' }}>
+      This message could not be displayed.
+    </div>
+  );
+}
+
+class MessageErrorBoundary extends Component {
+  constructor(props) {
+    super(props);
+    this.state = { hasError: false };
+  }
+  static getDerivedStateFromError() {
+    return { hasError: true };
+  }
+  render() {
+    return this.state.hasError ? <MessageErrorBoundaryFallback /> : this.props.children;
+  }
+}
 
 function SearchingLoader() {
   return (
@@ -11,12 +37,18 @@ function SearchingLoader() {
   );
 }
 
-export default function ChatMessage({ message, user, isStreaming, onRegenerate, onCopy }) {
+function ChatMessageBase({ message, user, isStreaming, onRegenerate, onCopy }) {
   const [copiedCodeIndex, setCopiedCodeIndex] = useState(null);
   const [copiedText, setCopiedText] = useState(false);
   const [thoughtOpen, setThoughtOpen] = useState(false);
+  const [showFull, setShowFull] = useState(false);
 
   const isUser = message.role === 'user';
+
+  // Safe flattening of content: string | [{type:'text'}] | {text} | null
+  const rawText = useMemo(() => getText(message.content), [message.content]);
+  const truncated = rawText.length > MAX_DISPLAY_CHARS;
+  const displayText = truncated && !showFull ? rawText.slice(0, MAX_DISPLAY_CHARS) : rawText;
 
   const copyToClipboard = (text, isCode = false, index = null) => {
     navigator.clipboard.writeText(text);
@@ -30,20 +62,8 @@ export default function ChatMessage({ message, user, isStreaming, onRegenerate, 
     }
   };
 
-  const renderFormattedContent = (rawContent) => {
-    if (!rawContent) return null;
-
-    let content = rawContent;
-    if (typeof content !== 'string') {
-      if (Array.isArray(content)) {
-        const textObj = content.find((item) => item && (item.text || typeof item === 'string'));
-        content = textObj ? (textObj.text || String(textObj)) : JSON.stringify(content);
-      } else if (typeof content === 'object') {
-        content = content.text ? String(content.text) : JSON.stringify(content);
-      } else {
-        content = String(content);
-      }
-    }
+  const renderFormattedContent = (content) => {
+    if (!content) return null;
 
     const codeBlockRegex = /```(\w+)?\n([\s\S]*?)```/g;
     const parts = [];
@@ -118,6 +138,13 @@ export default function ChatMessage({ message, user, isStreaming, onRegenerate, 
       );
     });
   };
+
+  // Memoize formatted output so streaming re-renders don't re-parse old messages
+  const formattedOutput = useMemo(
+    () => renderFormattedContent(displayText),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [displayText, copiedCodeIndex]
+  );
 
   return (
     <div className={`message-row ${isUser ? 'user' : 'assistant'}`}>
@@ -268,17 +295,33 @@ export default function ChatMessage({ message, user, isStreaming, onRegenerate, 
         )}
 
         <div className="message-bubble">
-          {!isUser && (!message.content || message.content.trim() === '') ? (
+          {!isUser && rawText.trim() === '' ? (
             isStreaming ? (
               <SearchingLoader />
             ) : (
               <span style={{ color: 'var(--text-smoke)', fontStyle: 'italic', fontSize: '13px' }}>
-                No response received. Please try again.
+                No response received. This reply was likely interrupted by a reload — use REGENERATE below.
               </span>
             )
           ) : (
             <>
-              {renderFormattedContent(message.content)}
+              {formattedOutput}
+              {truncated && !showFull && (
+                <button
+                  onClick={() => setShowFull(true)}
+                  style={{ background: 'transparent', border: 'none', fontSize: '12px', color: 'var(--cta-lake-blue)', cursor: 'pointer', fontWeight: '600', padding: '4px 0' }}
+                >
+                  Show more ({(rawText.length - MAX_DISPLAY_CHARS).toLocaleString()} more characters)
+                </button>
+              )}
+              {truncated && showFull && (
+                <button
+                  onClick={() => setShowFull(false)}
+                  style={{ background: 'transparent', border: 'none', fontSize: '12px', color: 'var(--text-smoke)', cursor: 'pointer', padding: '4px 0' }}
+                >
+                  Show less
+                </button>
+              )}
               {isStreaming && !isUser && (
                 <span className="streaming-cursor" title="Generating...">▍</span>
               )}
@@ -286,14 +329,16 @@ export default function ChatMessage({ message, user, isStreaming, onRegenerate, 
           )}
         </div>
 
-        {message.content && message.content.trim().length > 0 && (
+        {(rawText.trim().length > 0 || (!isUser && !isStreaming && onRegenerate)) && (
           <div style={{ display: 'flex', gap: '12px', marginTop: '8px' }}>
-            <button
-              onClick={() => copyToClipboard(message.content)}
-              style={{ background: 'transparent', border: 'none', fontSize: '12px', color: 'var(--text-smoke)', cursor: 'pointer' }}
-            >
-              {copiedText ? 'COPIED ✓' : 'COPY'}
-            </button>
+            {rawText.trim().length > 0 && (
+              <button
+                onClick={() => copyToClipboard(rawText)}
+                style={{ background: 'transparent', border: 'none', fontSize: '12px', color: 'var(--text-smoke)', cursor: 'pointer' }}
+              >
+                {copiedText ? 'COPIED ✓' : 'COPY'}
+              </button>
+            )}
             {!isUser && onRegenerate && !isStreaming && (
               <button
                 onClick={onRegenerate}
@@ -308,3 +353,13 @@ export default function ChatMessage({ message, user, isStreaming, onRegenerate, 
     </div>
   );
 }
+
+// Stable per-message error boundary: a crash in one message shows a fallback
+// chip instead of taking down the entire interface (PART 3.6)
+export default memo(function ChatMessage(props) {
+  return (
+    <MessageErrorBoundary>
+      <ChatMessageBase {...props} />
+    </MessageErrorBoundary>
+  );
+});

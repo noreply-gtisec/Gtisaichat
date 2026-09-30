@@ -1,12 +1,14 @@
 import { NextResponse } from 'next/server';
 import { uploadFileToDrive } from '../../../lib/gdrive';
 import { getAuthUser } from '../../../lib/authServer';
+import { withTiming } from '../../../lib/withTiming';
 
-// Max characters to send to the AI model (~125K tokens — fits within most model context windows)
-const MAX_EXTRACTED_CHARS = 500000;
+// Cap on extracted document text (server-side) — keeps chats and prompts small
+const MAX_EXTRACTED_CHARS = 20000;
 
-// Large PDFs block the Node event loop during parsing and stall the whole server
-const MAX_FILE_SIZE_BYTES = 25 * 1024 * 1024; // 25 MB
+// Server-side upload policy: 10 MB max, images (png/jpeg/webp) and PDF only
+const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024; // 10 MB
+const ALLOWED_MIME_TYPES = ['image/png', 'image/jpeg', 'image/webp', 'application/pdf'];
 const PDF_PARSE_TIMEOUT_MS = 60000; // 60 s
 
 function withTimeout(promise, message) {
@@ -19,7 +21,7 @@ function withTimeout(promise, message) {
 
 export const maxDuration = 60;
 
-export async function POST(req) {
+async function handlePost(req) {
   try {
     const user = await getAuthUser(req);
     if (!user) {
@@ -43,6 +45,14 @@ export async function POST(req) {
     const arrayBuffer = await file.arrayBuffer();
     const buffer = Buffer.from(arrayBuffer);
     const isPdf = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
+
+    // Only png/jpeg/webp images and PDFs are accepted
+    if (!ALLOWED_MIME_TYPES.includes(file.type)) {
+      return NextResponse.json(
+        { success: false, error: `Unsupported file type (${file.type || 'unknown'}). Allowed: PNG, JPEG, WebP, PDF.` },
+        { status: 400 }
+      );
+    }
 
     // ── Step 1: Extract text from PDF (independent of Google Drive) ──
     let extractedText = null;
@@ -110,3 +120,5 @@ export async function POST(req) {
     return NextResponse.json({ success: false, error: userMsg }, { status: 400 });
   }
 }
+
+export const POST = withTiming('upload', handlePost);
