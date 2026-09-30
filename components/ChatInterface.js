@@ -691,22 +691,13 @@ export default function ChatInterface({ user, onLogout, onBackToLanding }) {
 
             {user && (
               <div className="user-profile-badge" style={{ height: '34px', padding: '2px 10px 2px 4px' }}>
-                {user.avatar ? (
-                  <img
-                    src={user.avatar}
-                    alt={user.name || 'User'}
-                    className="user-avatar"
-                    style={{ objectFit: 'cover' }}
-                  />
-                ) : (
-                  <span className="user-avatar">
-                    {user.name
-                      ? user.name.charAt(0).toUpperCase()
-                      : user.email
-                      ? user.email.charAt(0).toUpperCase()
-                      : 'U'}
-                  </span>
-                )}
+                <span className="user-avatar">
+                  {user.name
+                    ? user.name.charAt(0).toUpperCase()
+                    : user.email
+                    ? user.email.charAt(0).toUpperCase()
+                    : user.avatar || 'U'}
+                </span>
                 <span
                   style={{
                     fontWeight: '600',

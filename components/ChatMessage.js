@@ -140,19 +140,11 @@ function ChatMessageBase({ message, user, isStreaming, onRegenerate, onCopy }) {
     <div className={`message-row ${isUser ? 'user' : 'assistant'}`}>
       <div className={`message-avatar ${isUser ? 'user' : 'assistant'}`}>
         {isUser ? (
-          user?.avatar ? (
-            <img
-              src={user.avatar}
-              alt={user.name || 'User'}
-              style={{ width: '100%', height: '100%', borderRadius: '50%', objectFit: 'cover' }}
-            />
-          ) : (
-            user?.name
-              ? user.name.charAt(0).toUpperCase()
-              : user?.email
-              ? user.email.charAt(0).toUpperCase()
-              : 'U'
-          )
+          user?.name
+            ? user.name.charAt(0).toUpperCase()
+            : user?.email
+            ? user.email.charAt(0).toUpperCase()
+            : user?.avatar || 'U'
         ) : (
           'Z'
         )}

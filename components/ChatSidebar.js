@@ -130,19 +130,11 @@ export default function ChatSidebar({
       <div className="sidebar-footer-new">
         <div className="sidebar-user-card">
           <div className="sidebar-user-avatar">
-            {user?.avatar ? (
-              <img
-                src={user.avatar}
-                alt={user.name || 'User'}
-                style={{ width: '100%', height: '100%', borderRadius: '50%', objectFit: 'cover' }}
-              />
-            ) : (
-              user?.name
-                ? user.name.charAt(0).toUpperCase()
-                : user?.email
-                ? user.email.charAt(0).toUpperCase()
-                : 'U'
-            )}
+            {user?.name
+              ? user.name.charAt(0).toUpperCase()
+              : user?.email
+              ? user.email.charAt(0).toUpperCase()
+              : user?.avatar || 'U'}
           </div>
 
           <div className="sidebar-user-meta">

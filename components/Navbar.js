@@ -36,7 +36,13 @@ export default function Navbar({
                 OPEN CHAT ▸
               </button>
               <div className="user-profile-badge">
-                <span className="user-avatar">{user.name.charAt(0)}</span>
+                <span className="user-avatar">
+                  {user?.name
+                    ? user.name.charAt(0).toUpperCase()
+                    : user?.email
+                    ? user.email.charAt(0).toUpperCase()
+                    : 'U'}
+                </span>
                 <span>{user.name}</span>
                 <button onClick={onLogout} className="btn-logout" title="Sign Out">
                   LOGOUT
