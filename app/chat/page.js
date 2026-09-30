@@ -39,14 +39,18 @@ export default function ChatPage() {
     });
 
     // 2. Real-time auth listener (sign-in, token refresh, sign-out)
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       if (!isMounted) return;
 
       if (session?.user) {
         const u = session.user;
         const email = u.email || '';
         if (validateDomain(email)) {
-          setUser(formatUserData(u));
+          // Avoid creating a new user object reference if user email is unchanged (prevents tab-switch re-renders)
+          setUser((prev) => {
+            if (prev && prev.email === email) return prev;
+            return formatUserData(u);
+          });
           setLoading(false);
           if (typeof window !== 'undefined' && window.location.hash) {
             window.history.replaceState(null, '', window.location.pathname + (window.location.search || ''));
@@ -56,7 +60,7 @@ export default function ChatPage() {
           setUser(null);
           router.replace('/?error=unauthorized');
         }
-      } else {
+      } else if (event === 'SIGNED_OUT') {
         setUser(null);
         router.replace('/');
       }

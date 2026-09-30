@@ -8,27 +8,22 @@ import ChatInput from './ChatInput';
 import EmptyState from './EmptyState';
 
 import { supabase } from '../lib/supabaseClient';
-import { getText } from '../lib/history';
 
-// Small local cache only: 20 chats × 20 messages, text without attachments.
-// The server is the source of truth — this just paints the sidebar instantly.
-const CACHE_MAX_CHATS = 20;
-const CACHE_MAX_MSGS = 20;
+// Store only the active thread pointer in sessionStorage (ephemeral, cleared on tab close)
 const ACTIVE_CHAT_KEY = 'gtis-active-chat';
-const CHATS_CACHE_KEY = 'gtis-chats-cache';
 const PAGE_SIZE = 20;
 
-function safeReadLS(key) {
+function safeReadSession(key) {
   try {
-    return window.localStorage.getItem(key);
+    return window.sessionStorage.getItem(key);
   } catch {
-    return null; // private mode / quota — ignore, server data still loads
+    return null;
   }
 }
 
-function safeWriteLS(key, value) {
+function safeWriteSession(key, value) {
   try {
-    window.localStorage.setItem(key, value);
+    window.sessionStorage.setItem(key, value);
   } catch {
     // QuotaExceededError etc. must never break the UI
   }
@@ -92,9 +87,23 @@ export default function ChatInterface({ user, onLogout, onBackToLanding }) {
     fetchModels();
   }, []);
 
-  // Load chat threads from MongoDB on user load (server is the source of truth)
+  // Security hygiene: Purge any legacy plaintext chat messages stored in localStorage
+  useEffect(() => {
+    try {
+      window.localStorage.removeItem('gtis-chats-cache');
+      window.localStorage.removeItem('gtis-active-chat');
+    } catch {
+      // ignore
+    }
+  }, []);
+
+  // Load chat threads from MongoDB (server is the single source of truth)
   const loadChatList = useCallback(async () => {
-    setChatsLoading(true);
+    // Only show loading indicator if there are zero chats currently in memory
+    setChats((curr) => {
+      if (curr.length === 0) setChatsLoading(true);
+      return curr;
+    });
     setChatsError(null);
     try {
       const { data: { session } } = await supabase.auth.getSession();
@@ -106,38 +115,49 @@ export default function ChatInterface({ user, onLogout, onBackToLanding }) {
       if (!res.ok) throw new Error(`Chat list request failed (HTTP ${res.status})`);
       const data = await res.json();
 
-      // Instant sidebar paint from the small local cache for chats the server
-      // hasn't returned (e. g. brand-new local chats keep their state)
-      let cached = [];
-      try {
-        cached = JSON.parse(safeReadLS(CHATS_CACHE_KEY) || '[]');
-      } catch {
-        cached = [];
-      }
+      setChats((prev) => {
+        const prevMap = new Map(prev.map((c) => [c.id, c]));
 
-      const serverChats = (data.chats || []).map((c) => ({
-        id: c._id,
-        title: typeof c.title === 'string' ? c.title : 'New Security Chat',
-        createdAt: c.createdAt,
-        updatedAt: c.updatedAt,
-        messages: [],
-        loaded: false,
-      }));
-      const cachedOnly = cached.filter(
-        (cc) => cc.id && !serverChats.some((sc) => sc.id === cc.id) && String(cc.id).startsWith('chat-')
-      ).map((cc) => ({ ...cc, messages: cc.messages || [], loaded: false }));
+        const serverChats = (data.chats || []).map((c) => {
+          const existing = prevMap.get(c._id);
+          // Preserve loaded messages in memory so tab changes / background refreshes never erase conversation
+          const existingMsgs = (existing?.messages && existing.messages.length > 0)
+            ? existing.messages
+            : [];
+          const isLoaded = existing?.loaded || (existingMsgs.length > 0);
 
-      const merged = [...cachedOnly, ...serverChats];
-      setChats(merged);
+          return {
+            id: c._id,
+            title: typeof c.title === 'string' ? c.title : 'New Security Chat',
+            createdAt: c.createdAt,
+            updatedAt: c.updatedAt,
+            messages: existingMsgs,
+            loaded: isLoaded,
+          };
+        });
 
-      // Reopen target: ?chatId= in the URL > last-active in localStorage > newest chat
-      const urlChatId = new URLSearchParams(window.location.search).get('chatId');
-      const storedChatId = safeReadLS(ACTIVE_CHAT_KEY);
-      const target =
-        merged.find((c) => c.id === urlChatId) ||
-        merged.find((c) => c.id === storedChatId) ||
-        merged[0] || null;
-      setActiveChatId(target ? target.id : null);
+        // Retain any pending unsaved local chats
+        const localOnly = prev
+          .filter((pc) => pc.id && !serverChats.some((sc) => sc.id === pc.id) && String(pc.id).startsWith('chat-'));
+
+        const merged = [...localOnly, ...serverChats];
+
+        // Maintain activeChatId so tab switching or refresh keeps the user right where they were
+        setActiveChatId((currActive) => {
+          if (currActive && merged.some((c) => c.id === currActive)) {
+            return currActive;
+          }
+          const urlChatId = typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('chatId') : null;
+          const storedChatId = safeReadSession(ACTIVE_CHAT_KEY);
+          const target =
+            merged.find((c) => c.id === urlChatId) ||
+            merged.find((c) => c.id === storedChatId) ||
+            merged[0] || null;
+          return target ? target.id : null;
+        });
+
+        return merged;
+      });
     } catch (err) {
       console.error('Failed to load chats from MongoDB:', err);
       setChatsError(err.message);
@@ -146,22 +166,36 @@ export default function ChatInterface({ user, onLogout, onBackToLanding }) {
     }
   }, []);
 
-  useEffect(() => {
-    if (user) loadChatList();
-  }, [user, loadChatList]);
+  const userEmail = user?.email;
+  const initialLoadDoneRef = useRef(false);
 
-  // Load one page of messages (newest 20) when a chat opens and has none yet.
-  // A ref (not `chats`) tracks which chats are already loaded/loading, so this
-  // effect depends only on activeChatId and cannot re-trigger itself (PART 2.6).
+  useEffect(() => {
+    if (userEmail && !initialLoadDoneRef.current) {
+      initialLoadDoneRef.current = true;
+      loadChatList();
+    }
+  }, [userEmail, loadChatList]);
+
+  // Load one page of messages (newest 20) when a chat opens and has none yet
   useEffect(() => {
     if (!activeChatId) return;
+
+    // If chat already has loaded messages in memory, don't re-fetch or clear
+    const activeObj = chats.find((c) => c.id === activeChatId);
+    if (activeObj?.loaded && activeObj?.messages && activeObj.messages.length > 0) {
+      loadedChatRef.current.add(activeChatId);
+      return;
+    }
+
     if (loadedChatRef.current.has(activeChatId)) return;
     loadedChatRef.current.add(activeChatId);
 
     let cancelled = false;
 
     async function loadChatMessages() {
-      setMsgsLoading(true);
+      if (!activeObj?.messages || activeObj.messages.length === 0) {
+        setMsgsLoading(true);
+      }
       try {
         const { data: { session } } = await supabase.auth.getSession();
         const headers = session?.access_token
@@ -182,8 +216,7 @@ export default function ChatInterface({ user, onLogout, onBackToLanding }) {
           timestamp: m.createdAt ? new Date(m.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '',
         })).reverse();
 
-        // If the saved thread ends on a user message, the reply was interrupted
-        // (page closed mid-stream). Show an empty assistant bubble with Regenerate.
+        // If the saved thread ends on a user message, show an empty assistant bubble with Regenerate
         if (loaded.length > 0 && loaded[loaded.length - 1].role === 'user') {
           loaded.push({
             id: `interrupted-${activeChatId}`,
@@ -203,7 +236,7 @@ export default function ChatInterface({ user, onLogout, onBackToLanding }) {
         loadedChatRef.current.delete(activeChatId); // allow Retry to re-fetch
         if (!cancelled) {
           console.error('Failed to load thread messages:', err);
-          setChatsError(err.message); // inline error banner offers Retry
+          setChatsError(err.message);
         }
       } finally {
         if (!cancelled) setMsgsLoading(false);
@@ -211,44 +244,18 @@ export default function ChatInterface({ user, onLogout, onBackToLanding }) {
     }
     loadChatMessages();
     return () => { cancelled = true; };
-  }, [activeChatId]);
+  }, [activeChatId, chats]);
 
-  // Keep ?chatId= in the URL and localStorage in sync so a reload reopens this chat
+  // Keep ?chatId= in the URL and sessionStorage in sync so a refresh reopens this chat
   useEffect(() => {
     if (!activeChatId) return;
-    safeWriteLS(ACTIVE_CHAT_KEY, activeChatId);
+    safeWriteSession(ACTIVE_CHAT_KEY, activeChatId);
     const params = new URLSearchParams(window.location.search);
     if (params.get('chatId') !== activeChatId) {
       params.set('chatId', activeChatId);
       router.replace(`/chat?${params.toString()}`, { scroll: false });
     }
   }, [activeChatId, router]);
-
-  // Debounced tiny cache (1s, 20 chats x 20 messages, no attachments) — wrapped
-  // in try/catch so a QuotaExceededError can never break the app
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      try {
-        const slim = chats.slice(0, CACHE_MAX_CHATS).map((c) => ({
-          id: c.id,
-          title: c.title,
-          createdAt: c.createdAt,
-          updatedAt: c.updatedAt,
-          loaded: c.loaded,
-          messages: c.messages.slice(-CACHE_MAX_MSGS).map((m) => ({
-            id: m.id,
-            role: m.role,
-            content: getText(m.content).slice(0, 4000),
-            timestamp: m.timestamp,
-          })),
-        }));
-        safeWriteLS(CHATS_CACHE_KEY, JSON.stringify(slim));
-      } catch {
-        // storage full/unavailable — cache is optional, ignore
-      }
-    }, 1000);
-    return () => clearTimeout(timer);
-  }, [chats]);
 
   const activeChat = chats.find((c) => c.id === activeChatId);
   const messages = activeChat ? activeChat.messages : [];
@@ -745,7 +752,7 @@ export default function ChatInterface({ user, onLogout, onBackToLanding }) {
               </div>
             )}
 
-            {chatsLoading || msgsLoading ? (
+            {(chatsLoading || msgsLoading) && messages.length === 0 ? (
               <MessageSkeleton />
             ) : messages.length === 0 ? (
               <EmptyState
