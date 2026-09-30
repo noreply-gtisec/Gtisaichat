@@ -3,6 +3,9 @@
 import { useState, memo, useMemo, Component } from 'react';
 import { getText } from '../lib/history';
 
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
+
 // UI-side cap for very long messages — rest hidden behind "Show more"
 const MAX_DISPLAY_CHARS = 20000;
 
@@ -37,8 +40,82 @@ function SearchingLoader() {
   );
 }
 
+function CodeBlock({ language, code }) {
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = () => {
+    if (typeof navigator !== 'undefined' && navigator.clipboard) {
+      navigator.clipboard.writeText(code);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    }
+  };
+
+  return (
+    <div className="code-block-container">
+      <div className="code-header">
+        <span className="code-lang">{(language || 'code').toUpperCase()}</span>
+        <button
+          type="button"
+          className="btn-copy-code"
+          onClick={handleCopy}
+          aria-label="Copy code to clipboard"
+        >
+          {copied ? 'Copied ✓' : 'Copy code'}
+        </button>
+      </div>
+      <pre className="code-content">
+        <code>{code}</code>
+      </pre>
+    </div>
+  );
+}
+
+function extractRawString(val) {
+  if (typeof val === 'string') return val;
+  if (Array.isArray(val)) return val.map(extractRawString).join('');
+  if (val && typeof val === 'object' && val.props && val.props.children) {
+    return extractRawString(val.props.children);
+  }
+  return String(val || '');
+}
+
+const markdownComponents = {
+  a({ node, href, children, ...props }) {
+    return (
+      <a href={href} target="_blank" rel="noopener noreferrer" {...props}>
+        {children}
+      </a>
+    );
+  },
+  pre({ children }) {
+    return <>{children}</>;
+  },
+  code({ node, className, children, ...props }) {
+    const match = /language-(\w+)/.exec(className || '');
+    const codeString = extractRawString(children).replace(/\n$/, '');
+    const isBlock = Boolean(match) || (typeof children === 'string' && children.includes('\n'));
+
+    if (isBlock) {
+      return <CodeBlock language={match ? match[1] : 'code'} code={codeString} />;
+    }
+
+    return (
+      <code className="inline-code" {...props}>
+        {children}
+      </code>
+    );
+  },
+  table({ node, children, ...props }) {
+    return (
+      <div className="table-wrapper">
+        <table {...props}>{children}</table>
+      </div>
+    );
+  },
+};
+
 function ChatMessageBase({ message, user, isStreaming, onRegenerate, onCopy }) {
-  const [copiedCodeIndex, setCopiedCodeIndex] = useState(null);
   const [copiedText, setCopiedText] = useState(false);
   const [thoughtOpen, setThoughtOpen] = useState(false);
   const [showFull, setShowFull] = useState(false);
@@ -50,101 +127,14 @@ function ChatMessageBase({ message, user, isStreaming, onRegenerate, onCopy }) {
   const truncated = rawText.length > MAX_DISPLAY_CHARS;
   const displayText = truncated && !showFull ? rawText.slice(0, MAX_DISPLAY_CHARS) : rawText;
 
-  const copyToClipboard = (text, isCode = false, index = null) => {
-    navigator.clipboard.writeText(text);
-    if (isCode) {
-      setCopiedCodeIndex(index);
-      setTimeout(() => setCopiedCodeIndex(null), 2000);
-    } else {
+  const copyToClipboard = (text) => {
+    if (typeof navigator !== 'undefined' && navigator.clipboard) {
+      navigator.clipboard.writeText(text);
       setCopiedText(true);
       setTimeout(() => setCopiedText(false), 2000);
       if (onCopy) onCopy(text);
     }
   };
-
-  const renderFormattedContent = (content) => {
-    if (!content) return null;
-
-    const codeBlockRegex = /```(\w+)?\n([\s\S]*?)```/g;
-    const parts = [];
-    let lastIndex = 0;
-    let match;
-    let index = 0;
-
-    while ((match = codeBlockRegex.exec(content)) !== null) {
-      if (match.index > lastIndex) {
-        parts.push({
-          type: 'text',
-          text: content.substring(lastIndex, match.index),
-          key: `text-${index}`
-        });
-      }
-
-      parts.push({
-        type: 'code',
-        lang: match[1] || 'code',
-        code: match[2].trim(),
-        key: `code-${index}`
-      });
-
-      lastIndex = match.index + match[0].length;
-      index++;
-    }
-
-    if (lastIndex < content.length) {
-      parts.push({
-        type: 'text',
-        text: content.substring(lastIndex),
-        key: `text-${index}`
-      });
-    }
-
-    return parts.map((part, i) => {
-      if (part.type === 'code') {
-        return (
-          <div key={part.key} className="code-block-container">
-            <div className="code-header">
-              <span>{part.lang.toUpperCase()}</span>
-              <button
-                className="btn-copy-code"
-                onClick={() => copyToClipboard(part.code, true, i)}
-              >
-                {copiedCodeIndex === i ? 'COPIED ✓' : 'COPY CODE'}
-              </button>
-            </div>
-            <pre className="code-content">
-              <code>{part.code}</code>
-            </pre>
-          </div>
-        );
-      }
-
-      const lines = part.text.split('\n');
-      return (
-        <div key={part.key}>
-          {lines.map((line, lIdx) => {
-            if (line.startsWith('### ')) {
-              return <h4 key={lIdx} style={{ fontSize: '18px', margin: '12px 0 6px', fontFamily: 'var(--font-serif)' }}>{line.replace('### ', '')}</h4>;
-            }
-            if (line.startsWith('#### ')) {
-              return <h5 key={lIdx} style={{ fontSize: '16px', margin: '10px 0 4px', fontFamily: 'var(--font-mono)' }}>{line.replace('#### ', '')}</h5>;
-            }
-            if (line.startsWith('- ')) {
-              return <li key={lIdx} style={{ marginLeft: '16px', marginBottom: '4px' }}>{line.replace('- ', '')}</li>;
-            }
-            return line ? <p key={lIdx} style={{ marginBottom: '8px' }}>{line}</p> : <br key={lIdx} />;
-          })}
-        </div>
-      );
-    });
-  };
-
-  // Memoize formatted output so streaming re-renders don't re-parse old messages
-  const formattedOutput = useMemo(
-    () => renderFormattedContent(displayText),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [displayText, copiedCodeIndex]
-  );
 
   return (
     <div className={`message-row ${isUser ? 'user' : 'assistant'}`}>
@@ -305,7 +295,18 @@ function ChatMessageBase({ message, user, isStreaming, onRegenerate, onCopy }) {
             )
           ) : (
             <>
-              {formattedOutput}
+              {isUser ? (
+                <div className="user-message-text">{displayText}</div>
+              ) : (
+                <div className="md">
+                  <ReactMarkdown
+                    remarkPlugins={[remarkGfm]}
+                    components={markdownComponents}
+                  >
+                    {displayText}
+                  </ReactMarkdown>
+                </div>
+              )}
               {truncated && !showFull && (
                 <button
                   onClick={() => setShowFull(true)}
