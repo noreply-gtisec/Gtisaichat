@@ -14,7 +14,7 @@ export default function Navbar({
     <header className="site-header">
       <div className="container nav-container">
         <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-          <Link href="/" className="brand-wordmark" aria-label="GTIS home">
+          <Link href="/?landing=true" className="brand-wordmark" aria-label="GTIS home">
             <Image
               src="/logo.png"
               alt="GTIS"

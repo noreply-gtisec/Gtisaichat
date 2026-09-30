@@ -1,106 +1,101 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import Navbar from '../components/Navbar';
 import HeroSection from '../components/HeroSection';
 import GoogleLoginModal from '../components/GoogleLoginModal';
-import ChatInterface from '../components/ChatInterface';
 import { supabase } from '../lib/supabaseClient';
+import { ALLOWED_DOMAIN, validateDomain, formatUserData } from '../lib/authHelper';
 
 export default function Home() {
+  const router = useRouter();
   const [googleModalOpen, setGoogleModalOpen] = useState(false);
   const [user, setUser] = useState(null);
-  const [viewMode, setViewMode] = useState('landing'); // 'landing' | 'chat'
   const [authError, setAuthError] = useState(null);
-
-  const ALLOWED_DOMAIN = 'gtisec.com';
-
-  // Validate if email belongs to @gtisec.com
-  const validateDomain = (email) => {
-    if (!email) return false;
-    return email.toLowerCase().trim().endsWith(`@${ALLOWED_DOMAIN}`);
-  };
-
-  // Helper to extract formatted user profile details (name, email, avatar)
-  const formatUserData = (u) => {
-    if (!u) return null;
-    const email = u.email || '';
-    const rawName =
-      u.user_metadata?.full_name ||
-      u.user_metadata?.name ||
-      u.user_metadata?.displayName ||
-      (email ? email.split('@')[0].replace(/[._-]/g, ' ') : '') ||
-      'Security Officer';
-
-    const formattedName = rawName
-      .split(' ')
-      .filter(Boolean)
-      .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
-      .join(' ');
-
-    const avatar =
-      u.user_metadata?.avatar_url ||
-      u.user_metadata?.picture ||
-      null;
-
-    return {
-      name: formattedName,
-      email: email,
-      avatar: avatar,
-    };
-  };
 
   // Supabase Auth session listener with @gtisec.com domain enforcement
   useEffect(() => {
+    let isMounted = true;
+
+    // Check if error parameter exists in URL (e.g. from /chat redirect)
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      if (params.get('error') === 'unauthorized') {
+        setAuthError(`ACCESS DENIED: Only @${ALLOWED_DOMAIN} accounts are permitted to access Zyra.`);
+      }
+    }
+
+    const hasAuthCallback =
+      typeof window !== 'undefined' &&
+      (window.location.hash.includes('access_token') || window.location.search.includes('code'));
+
+    const searchParams = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null;
+    const isLandingExplicit = searchParams?.get('landing') === 'true';
+
     supabase.auth.getSession().then(({ data: { session } }) => {
+      if (!isMounted) return;
+
       if (session?.user) {
         const u = session.user;
         const email = u.email || '';
         if (validateDomain(email)) {
-          setUser(formatUserData(u));
-          setViewMode('chat');
+          const userData = formatUserData(u);
+          setUser(userData);
           setAuthError(null);
+
+          // If returning from OAuth callback or not explicitly viewing landing, navigate to /chat
+          if (hasAuthCallback || !isLandingExplicit) {
+            router.replace('/chat');
+          }
         } else {
-          // Reject unauthorized domain
           supabase.auth.signOut();
           setUser(null);
-          setViewMode('landing');
-          setAuthError(`ACCESS DENIED: ${email} is not authorized. Only @gtisec.com accounts are permitted.`);
+          setAuthError(`ACCESS DENIED: ${email} is not authorized. Only @${ALLOWED_DOMAIN} accounts are permitted.`);
         }
       }
     });
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      if (!isMounted) return;
+
       if (session?.user) {
         const u = session.user;
         const email = u.email || '';
         if (validateDomain(email)) {
-          setUser(formatUserData(u));
-          setViewMode('chat');
+          const userData = formatUserData(u);
+          setUser(userData);
           setAuthError(null);
+
+          if (event === 'SIGNED_IN' || hasAuthCallback || !isLandingExplicit) {
+            router.replace('/chat');
+          }
         } else {
-          // Reject unauthorized domain
           supabase.auth.signOut();
           setUser(null);
-          setViewMode('landing');
-          setAuthError(`ACCESS DENIED: ${email} is not authorized. Only @gtisec.com accounts are permitted.`);
+          setAuthError(`ACCESS DENIED: ${email} is not authorized. Only @${ALLOWED_DOMAIN} accounts are permitted.`);
         }
       } else {
         setUser(null);
-        setViewMode('landing');
       }
     });
 
-    return () => subscription.unsubscribe();
-  }, []);
+    return () => {
+      isMounted = false;
+      subscription?.unsubscribe();
+    };
+  }, [router]);
 
   const handleGoogleSignIn = async () => {
     setAuthError(null);
     try {
+      const redirectUrl =
+        typeof window !== 'undefined' ? `${window.location.origin}/chat` : undefined;
+
       const { error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
-          redirectTo: typeof window !== 'undefined' ? `${window.location.origin}` : undefined,
+          redirectTo: redirectUrl,
           queryParams: {
             hd: ALLOWED_DOMAIN, // Google hosted domain restriction
           },
@@ -124,19 +119,12 @@ export default function Home() {
       console.warn('Sign out notice:', e);
     }
     setUser(null);
-    setViewMode('landing');
     setAuthError(null);
   };
 
-  if (user && viewMode === 'chat') {
-    return (
-      <ChatInterface
-        user={user}
-        onLogout={handleLogout}
-        onBackToLanding={() => setViewMode('landing')}
-      />
-    );
-  }
+  const handleOpenChat = () => {
+    router.push('/chat');
+  };
 
   return (
     <div className="page-wrapper">
@@ -170,14 +158,14 @@ export default function Home() {
       <Navbar
         user={user}
         onOpenGoogleLogin={() => setGoogleModalOpen(true)}
-        onOpenChat={() => setViewMode('chat')}
+        onOpenChat={handleOpenChat}
         onLogout={handleLogout}
       />
 
       <HeroSection
         user={user}
         onOpenGoogleLogin={() => setGoogleModalOpen(true)}
-        onOpenChat={() => setViewMode('chat')}
+        onOpenChat={handleOpenChat}
       />
 
       <GoogleLoginModal

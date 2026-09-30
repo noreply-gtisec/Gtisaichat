@@ -38,7 +38,7 @@ export default function ChatSidebar({
       {/* Sidebar Header */}
       <div className="sidebar-header-new">
         <Link
-          href="/"
+          href="/?landing=true"
           className="sidebar-brand"
           aria-label="GTIS home"
           style={{ display: 'flex', alignItems: 'center', gap: '8px', textDecoration: 'none' }}
