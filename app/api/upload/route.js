@@ -8,9 +8,16 @@ import { chunkDocumentText } from '../../../lib/chunker';
 // Increased from 20,000 to 8,000,000 now that RAG chunking is implemented.
 const MAX_EXTRACTED_CHARS = 8000000;
 
-// Server-side upload policy: 10 MB max, images (png/jpeg/webp) and PDF only
+// Server-side upload policy: 10 MB max, images (png/jpeg/webp) and documents
 const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024; // 10 MB
-const ALLOWED_MIME_TYPES = ['image/png', 'image/jpeg', 'image/webp', 'application/pdf'];
+const ALLOWED_MIME_TYPES = [
+  'image/png', 
+  'image/jpeg', 
+  'image/webp', 
+  'application/pdf',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document', // .docx
+  'application/msword' // .doc
+];
 const PDF_PARSE_TIMEOUT_MS = 60000; // 60 s
 
 function withTimeout(promise, message) {
@@ -47,11 +54,15 @@ async function handlePost(req) {
     const arrayBuffer = await file.arrayBuffer();
     const buffer = Buffer.from(arrayBuffer);
     const isPdf = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
+    const isWord = file.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' || 
+                   file.type === 'application/msword' || 
+                   file.name.toLowerCase().endsWith('.docx') || 
+                   file.name.toLowerCase().endsWith('.doc');
 
-    // Only png/jpeg/webp images and PDFs are accepted
+    // Only png/jpeg/webp images and documents are accepted
     if (!ALLOWED_MIME_TYPES.includes(file.type)) {
       return NextResponse.json(
-        { success: false, error: `Unsupported file type (${file.type || 'unknown'}). Allowed: PNG, JPEG, WebP, PDF.` },
+        { success: false, error: `Unsupported file type (${file.type || 'unknown'}). Allowed: PNG, JPEG, WebP, PDF, DOCX, DOC.` },
         { status: 400 }
       );
     }
@@ -94,6 +105,30 @@ async function handlePost(req) {
       } catch (pdfErr) {
         console.error('PDF text extraction failed:', pdfErr);
         extractedText = '[PDF text extraction failed. The file may be corrupted, password-protected, or in an unsupported format.]';
+      }
+    }
+
+    // ── Step 1.5: Extract text from Word (independent of Google Drive) ──
+    if (isWord) {
+      try {
+        const WordExtractorModule = await import('word-extractor');
+        const WordExtractor = WordExtractorModule.default || WordExtractorModule;
+        const extractor = new WordExtractor();
+        
+        const document = await extractor.extract(buffer);
+        extractedText = document.getBody() || '';
+        
+        console.log(`Word extracted: ${file.name} — ${extractedText.length} chars`);
+
+        // Truncate extremely long documents to prevent token overflow
+        if (extractedText.length > MAX_EXTRACTED_CHARS) {
+          const totalLen = extractedText.length;
+          extractedText = extractedText.substring(0, MAX_EXTRACTED_CHARS) +
+            `\n\n[... Document truncated. Showing first ${Math.round(MAX_EXTRACTED_CHARS / 1000)}K characters of ${totalLen.toLocaleString()} total characters ...]`;
+        }
+      } catch (wordErr) {
+        console.error('Word text extraction failed:', wordErr);
+        extractedText = '[Word text extraction failed. The file may be corrupted, password-protected, or in an unsupported format.]';
       }
     }
 
