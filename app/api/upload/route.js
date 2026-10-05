@@ -3,6 +3,8 @@ import { uploadFileToDrive } from '../../../lib/gdrive';
 import { getAuthUser } from '../../../lib/authServer';
 import { withTiming } from '../../../lib/withTiming';
 import { chunkDocumentText } from '../../../lib/chunker';
+import { processDocument } from '../../../lib/documentProcessor';
+
 
 // Cap on extracted document text (server-side) — keeps chats and prompts small
 // Increased from 20,000 to 8,000,000 now that RAG chunking is implemented.
@@ -18,16 +20,6 @@ const ALLOWED_MIME_TYPES = [
   'application/vnd.openxmlformats-officedocument.wordprocessingml.document', // .docx
   'application/msword' // .doc
 ];
-const PDF_PARSE_TIMEOUT_MS = 60000; // 60 s
-
-function withTimeout(promise, message) {
-  let timer;
-  const timeout = new Promise((_, reject) => {
-    timer = setTimeout(() => reject(new Error(message)), PDF_PARSE_TIMEOUT_MS);
-  });
-  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
-}
-
 export const maxDuration = 60;
 
 async function handlePost(req) {
@@ -39,6 +31,8 @@ async function handlePost(req) {
 
     const formData = await req.formData();
     const file = formData.get('file');
+    const passwordRaw = formData.get('password');
+    const password = typeof passwordRaw === 'string' && passwordRaw.length > 0 ? passwordRaw : undefined;
 
     if (!file) {
       return NextResponse.json({ error: 'No file provided' }, { status: 400 });
@@ -60,75 +54,35 @@ async function handlePost(req) {
                    file.name.toLowerCase().endsWith('.doc');
 
     // Only png/jpeg/webp images and documents are accepted
-    if (!ALLOWED_MIME_TYPES.includes(file.type)) {
+    if (!ALLOWED_MIME_TYPES.includes(file.type) && !isPdf && !isWord) {
       return NextResponse.json(
         { success: false, error: `Unsupported file type (${file.type || 'unknown'}). Allowed: PNG, JPEG, WebP, PDF, DOCX, DOC.` },
         { status: 400 }
       );
     }
 
-    // ── Step 1: Extract text from PDF (independent of Google Drive) ──
     let extractedText = null;
     let pageCount = null;
 
-    if (isPdf) {
-      try {
-        const pdfModule = await import('pdf-parse');
-        // Handle both ESM named export and CJS default export wrapping
-        const PDFParse = pdfModule.PDFParse || pdfModule.default?.PDFParse || pdfModule.default;
-        
-        if (!PDFParse) {
-          throw new Error('PDFParse class not found in pdf-parse module');
-        }
-
-        const parser = new PDFParse({ data: buffer });
-        await withTimeout(parser.load(), 'PDF parsing timed out — the file may be too large or complex');
-        const result = await withTimeout(parser.getText(), 'PDF text extraction timed out — the file may be too large or complex');
-        extractedText = result.text || '';
-        pageCount = result.total || null;
-
-        await parser.destroy?.();
-
-        console.log(`PDF extracted: ${file.name} — ${pageCount} pages, ${extractedText.length} chars`);
-
-        // Truncate extremely long documents to prevent token overflow
-        if (extractedText.length > MAX_EXTRACTED_CHARS) {
-          const totalLen = extractedText.length;
-          extractedText = extractedText.substring(0, MAX_EXTRACTED_CHARS) +
-            `\n\n[... Document truncated. Showing first ${Math.round(MAX_EXTRACTED_CHARS / 1000)}K characters of ${totalLen.toLocaleString()} total characters ...]`;
-        }
-
-        // If extraction yields very little text, the PDF may be scanned/image-based
-        if (extractedText.trim().length < 50 && pageCount > 0) {
-          extractedText = `[This PDF appears to be scanned or image-based (${pageCount} pages). Text extraction found minimal content. The document may contain images, charts, or scanned text that requires OCR.]`;
-        }
-      } catch (pdfErr) {
-        console.error('PDF text extraction failed:', pdfErr);
-        extractedText = '[PDF text extraction failed. The file may be corrupted, password-protected, or in an unsupported format.]';
+    if (isPdf || isWord) {
+      const doc = await processDocument({ buffer, isPdf, isWord, password });
+      if (!doc.success) {
+        return NextResponse.json(
+          { success: false, code: doc.code, error: doc.error },
+          { status: 422 }
+        );
       }
-    }
+      extractedText = doc.text;
+      pageCount = doc.pageCount;
 
-    // ── Step 1.5: Extract text from Word (independent of Google Drive) ──
-    if (isWord) {
-      try {
-        const WordExtractorModule = await import('word-extractor');
-        const WordExtractor = WordExtractorModule.default || WordExtractorModule;
-        const extractor = new WordExtractor();
-        
-        const document = await extractor.extract(buffer);
-        extractedText = document.getBody() || '';
-        
-        console.log(`Word extracted: ${file.name} — ${extractedText.length} chars`);
+      if (extractedText.length > MAX_EXTRACTED_CHARS) {
+        const totalLen = extractedText.length;
+        extractedText = extractedText.substring(0, MAX_EXTRACTED_CHARS) +
+          `\n\n[... Document truncated. Showing first ${Math.round(MAX_EXTRACTED_CHARS / 1000)}K characters of ${totalLen.toLocaleString()} total characters ...]`;
+      }
 
-        // Truncate extremely long documents to prevent token overflow
-        if (extractedText.length > MAX_EXTRACTED_CHARS) {
-          const totalLen = extractedText.length;
-          extractedText = extractedText.substring(0, MAX_EXTRACTED_CHARS) +
-            `\n\n[... Document truncated. Showing first ${Math.round(MAX_EXTRACTED_CHARS / 1000)}K characters of ${totalLen.toLocaleString()} total characters ...]`;
-        }
-      } catch (wordErr) {
-        console.error('Word text extraction failed:', wordErr);
-        extractedText = '[Word text extraction failed. The file may be corrupted, password-protected, or in an unsupported format.]';
+      if (isPdf && extractedText.trim().length < 50 && pageCount > 0) {
+        extractedText = `[This PDF appears to be scanned or image-based (${pageCount} pages). Text extraction found minimal content. The document may contain images, charts, or scanned text that requires OCR.]`;
       }
     }
 
