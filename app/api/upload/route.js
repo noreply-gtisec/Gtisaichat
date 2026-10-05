@@ -10,8 +10,8 @@ import { processDocument } from '../../../lib/documentProcessor';
 // Increased from 20,000 to 8,000,000 now that RAG chunking is implemented.
 const MAX_EXTRACTED_CHARS = 8000000;
 
-// Server-side upload policy: 10 MB max, images (png/jpeg/webp) and documents
-const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024; // 10 MB
+// Server-side upload policy: 30 MB max, images (png/jpeg/webp) and documents
+const MAX_FILE_SIZE_BYTES = 30 * 1024 * 1024; // 30 MB
 const ALLOWED_MIME_TYPES = [
   'image/png', 
   'image/jpeg', 
