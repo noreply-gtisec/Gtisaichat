@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, memo, useMemo, Component } from 'react';
+import { useState, useEffect, useRef, memo, useMemo, Component } from 'react';
 import { getText } from '../lib/history';
 
 import ReactMarkdown from 'react-markdown';
@@ -31,11 +31,11 @@ class MessageErrorBoundary extends Component {
   }
 }
 
-function SearchingLoader() {
+function SearchingLoader({ isGenerating = false }) {
   return (
     <div className="simple-searching-loader">
       <span className="simple-spinner" aria-hidden="true" />
-      <span>Searching...</span>
+      <span>{isGenerating ? 'Generating...' : 'Searching...'}</span>
     </div>
   );
 }
@@ -124,8 +124,39 @@ function ChatMessageBase({ message, user, isStreaming, onRegenerate, onCopy }) {
 
   // Safe flattening of content: string | [{type:'text'}] | {text} | null
   const rawText = useMemo(() => getText(message.content), [message.content]);
-  const truncated = rawText.length > MAX_DISPLAY_CHARS;
-  const displayText = truncated && !showFull ? rawText.slice(0, MAX_DISPLAY_CHARS) : rawText;
+  
+  // Only typewriter if this message was actually streaming when it mounted
+  const shouldTypewriter = useRef(isStreaming);
+  const [typedText, setTypedText] = useState((isUser || !shouldTypewriter.current) ? rawText : '');
+  const [isPreparing, setIsPreparing] = useState(false);
+
+  // Artificial pause to show "Generating..." phase clearly to the user
+  useEffect(() => {
+    if (shouldTypewriter.current && rawText.trim() !== '' && typedText === '') {
+      setIsPreparing(true);
+      const timer = setTimeout(() => setIsPreparing(false), 600);
+      return () => clearTimeout(timer);
+    }
+  }, [rawText, typedText]);
+  
+  useEffect(() => {
+    if (isUser || !shouldTypewriter.current || isPreparing) {
+      if (!shouldTypewriter.current) setTypedText(rawText);
+      return;
+    }
+    if (typedText.length < rawText.length) {
+      const diff = rawText.length - typedText.length;
+      const charsToAdd = Math.max(1, Math.min(diff, 3 + Math.floor(diff / 30))); 
+      const timeoutId = setTimeout(() => {
+        setTypedText(prev => rawText.slice(0, prev.length + charsToAdd));
+      }, 15);
+      return () => clearTimeout(timeoutId);
+    }
+  }, [rawText, typedText, isUser, isPreparing]);
+
+  const activeText = (isUser || !shouldTypewriter.current) ? rawText : typedText;
+  const truncated = activeText.length > MAX_DISPLAY_CHARS;
+  const displayText = truncated && !showFull ? activeText.slice(0, MAX_DISPLAY_CHARS) : activeText;
 
   // For user messages, display the clean user prompt instead of dumping thousands of lines of attached document text
   const displayPrompt = useMemo(() => {
@@ -290,9 +321,9 @@ function ChatMessageBase({ message, user, isStreaming, onRegenerate, onCopy }) {
         )}
 
         <div className="message-bubble">
-          {!isUser && rawText.trim() === '' ? (
-            isStreaming ? (
-              <SearchingLoader />
+          {!isUser && activeText.trim() === '' ? (
+            isStreaming || rawText.trim() !== '' ? (
+              <SearchingLoader isGenerating={rawText.trim() !== ''} />
             ) : (
               <span style={{ color: 'var(--text-smoke)', fontStyle: 'italic', fontSize: '13px' }}>
                 No response received. This reply was likely interrupted by a reload — use REGENERATE below.
