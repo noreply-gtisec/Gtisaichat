@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import crypto from 'crypto';
 import clientPromise from '../../../lib/mongodb';
 import { decryptApiKey } from '../../../lib/crypto';
 import { getAuthUser } from '../../../lib/authServer';
@@ -56,6 +57,23 @@ async function handlePost(req) {
           ? contentString.substring(0, MAX_STORED_CONTENT_CHARS) + '\n\n[... Document truncated for storage ...]'
           : contentString;
 
+        let currentUploadId = null;
+        let uploadedAt = null;
+        if (Array.isArray(documentChunks) && documentChunks.length > 0) {
+          currentUploadId = crypto.randomUUID();
+          uploadedAt = new Date();
+        }
+
+        const chatSetData = {
+          userId: userId,
+          userEmail: userEmail,
+          title: contentString.slice(0, 40) || 'New Chat',
+          updatedAt: new Date(),
+        };
+        if (currentUploadId) {
+          chatSetData.latestUploadId = currentUploadId;
+        }
+
         // Run MongoDB writes concurrently to prevent delaying stream startup
         const dbWrites = [
           db.collection('messages').insertOne({
@@ -70,12 +88,7 @@ async function handlePost(req) {
           db.collection('chats').updateOne(
             { _id: activeChatId },
             {
-              $set: {
-                userId: userId,
-                userEmail: userEmail,
-                title: contentString.slice(0, 40) || 'New Chat',
-                updatedAt: new Date(),
-              },
+              $set: chatSetData,
               $setOnInsert: { createdAt: new Date() },
             },
             { upsert: true }
@@ -83,17 +96,18 @@ async function handlePost(req) {
         ];
 
         // Persist RAG document chunks if the frontend sent them (first message with a file)
-        if (Array.isArray(documentChunks) && documentChunks.length > 0) {
+        if (currentUploadId) {
           const chunkDocs = documentChunks.map((c) => ({
             chatId: activeChatId,
             userId: userId,
+            uploadId: currentUploadId,
             fileName: c.fileName || 'unknown',
             chunkIndex: c.chunkIndex,
             text: c.text,
-            createdAt: new Date(),
+            createdAt: uploadedAt, // Shared timestamp
           }));
           dbWrites.push(db.collection('document_chunks').insertMany(chunkDocs));
-          console.log(`Saved ${chunkDocs.length} document chunks for chat ${activeChatId}`);
+          console.log(`Saved ${chunkDocs.length} document chunks for chat ${activeChatId} (Upload ID: ${currentUploadId})`);
         }
 
         await Promise.all(dbWrites);
@@ -145,7 +159,7 @@ Format every response in clean Markdown. Start directly with the answer, no fill
       );
     }
 
-    // ── RAG Retrieval: inject relevant document chunks into Zyra's context ──
+    // RAG Retrieval: inject relevant document chunks into Zyra's context ──
     // If the user has uploaded documents in this chat, fetch chunks from MongoDB,
     // ask stealth/space-bunny-alpha which ones are relevant, and prepend only
     // those to the newest user message so Zyra answers from the document.
@@ -154,21 +168,30 @@ Format every response in clean Markdown. Start directly with the answer, no fill
         const mongoClient = await clientPromise;
         const db = mongoClient.db('aichat');
 
+        // Fetch the chat to get the latestUploadId
+        const chatDoc = await db.collection('chats').findOne({ _id: activeChatId });
+        const latestUploadId = chatDoc?.latestUploadId || null;
+
         const storedChunks = await db
           .collection('document_chunks')
           .find({ chatId: activeChatId })
-          .sort({ chunkIndex: 1 })
+          .sort({ createdAt: 1, chunkIndex: 1 })
           .toArray();
 
         if (storedChunks.length > 0) {
           console.log(`RAG: Found ${storedChunks.length} document chunks for chat ${activeChatId}`);
 
           // Ask stealth/space-bunny-alpha to pick the most relevant chunks
-          const userQuestion = getText(messages[messages.length - 1]?.content);
+          let userQuestion = getText(messages[messages.length - 1]?.content);
+          if (userQuestion.includes('\n\n[Attached ')) {
+            userQuestion = userQuestion.split('\n\n[Attached ')[0].trim();
+          }
+
           const relevantChunks = await retrieveRelevantChunks(
             userQuestion,
             storedChunks,
-            effectiveApiKey
+            effectiveApiKey,
+            latestUploadId
           );
 
           if (relevantChunks.length > 0) {
