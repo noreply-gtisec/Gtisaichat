@@ -104,7 +104,7 @@ export default function ChatInput({ onSendMessage, isStreaming, onStopStream }) 
             driveUrl = data.file.fileUrl || data.file.downloadUrl;
             driveFileId = data.file.driveFileId;
           }
-          if (isPdf && data.extractedText) {
+          if ((isPdf || isBinaryDoc) && data.extractedText) {
             textContent = data.extractedText;
             pageCount = data.pageCount || null;
           }
