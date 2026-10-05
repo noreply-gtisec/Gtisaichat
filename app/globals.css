@@ -1921,7 +1921,8 @@ h1, h2, h3, h4, .serif-heading {
 
 /* Dark mode overrides */
 @media (prefers-color-scheme: dark) {
-  .md code.inline-code {
+  .message-row.user .md code.inline-code,
+  .message-row.user code.inline-code {
     background-color: rgba(255, 255, 255, 0.08);
     border-color: rgba(255, 255, 255, 0.12);
     color: #f3f3f3;
