@@ -110,7 +110,10 @@ async function handlePost(req) {
           console.log(`Saved ${chunkDocs.length} document chunks for chat ${activeChatId} (Upload ID: ${currentUploadId})`);
         }
 
-        await Promise.all(dbWrites);
+        // Start the MongoDB writes in the background to avoid blocking the OpenRouter fetch
+        const userWritePromise = Promise.all(dbWrites).catch(err => {
+          console.error('Background MongoDB save failed:', err.message);
+        });
       }
     } catch (dbErr) {
       console.error('MongoDB save of user message failed:', dbErr.message);

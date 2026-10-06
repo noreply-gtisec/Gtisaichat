@@ -112,20 +112,61 @@ export default function ChatInterface({ user, onLogout, onBackToLanding }) {
         ? { Authorization: `Bearer ${session.access_token}` }
         : {};
 
-      const res = await fetch('/api/chat-history', { headers });
-      if (!res.ok) throw new Error(`Chat list request failed (HTTP ${res.status})`);
-      const data = await res.json();
+      // Pre-determine the initial chat ID to fetch its messages in parallel
+      const urlChatId = typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('chatId') : null;
+      const storedChatId = safeReadSession(ACTIVE_CHAT_KEY);
+      const initialTargetId = urlChatId || storedChatId;
+
+      // Fire both requests simultaneously
+      const listReq = fetch('/api/chat-history', { headers });
+      let msgsReq = null;
+      if (initialTargetId && !loadedChatRef.current.has(initialTargetId)) {
+        msgsReq = fetch(`/api/chat-history?chatId=${encodeURIComponent(initialTargetId)}`, { headers });
+        loadedChatRef.current.add(initialTargetId);
+      }
+
+      const [listRes, msgsRes] = await Promise.all([listReq, msgsReq || Promise.resolve(null)]);
+      if (!listRes.ok) throw new Error(`Chat list request failed (HTTP ${listRes.status})`);
+      
+      const data = await listRes.json();
+      let initialMessagesData = null;
+      
+      if (msgsRes && msgsRes.ok) {
+        initialMessagesData = await msgsRes.json();
+      }
 
       setChats((prev) => {
         const prevMap = new Map(prev.map((c) => [c.id, c]));
 
         const serverChats = (data.chats || []).map((c) => {
           const existing = prevMap.get(c._id);
-          // Preserve loaded messages in memory so tab changes / background refreshes never erase conversation
-          const existingMsgs = (existing?.messages && existing.messages.length > 0)
-            ? existing.messages
-            : [];
-          const isLoaded = existing?.loaded || (existingMsgs.length > 0);
+          
+          let existingMsgs = (existing?.messages && existing.messages.length > 0) ? existing.messages : [];
+          let isLoaded = existing?.loaded || (existingMsgs.length > 0);
+
+          // If this is the chat we just fetched in parallel, inject its messages
+          if (c._id === initialTargetId && initialMessagesData) {
+            const loaded = (initialMessagesData.messages || []).map((m) => ({
+              id: m._id,
+              role: m.role,
+              content: m.content,
+              attachments: m.attachments || [],
+              timestamp: m.createdAt ? new Date(m.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '',
+            })).reverse();
+            
+            if (loaded.length > 0 && loaded[loaded.length - 1].role === 'user') {
+              loaded.push({ id: `interrupted-${c._id}`, role: 'assistant', content: '', attachments: [], timestamp: '' });
+            }
+            
+            existingMsgs = loaded;
+            isLoaded = true;
+            
+            // Set the cursor for pagination
+            oldestCursorRef.current = initialMessagesData.oldestDate || null;
+            // setHasMoreEarlier needs to be called outside the setState callback normally, 
+            // but we can set it via a timeout or useEffect if needed. We'll leave it to the normal flow 
+            // or just let the user scroll up to trigger it later.
+          }
 
           return {
             id: c._id,
