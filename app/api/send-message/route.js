@@ -140,6 +140,10 @@ async function handlePost(req) {
       openRouterModel = 'anthropic/claude-3.5-sonnet:beta';
     }
 
+    console.log(`\n================== [CHAT REQUEST] ==================`);
+    console.log(`[USER] ${userEmail || userId} | Chat: ${activeChatId}`);
+    console.log(`[MAIN MODEL] Requested: "${model}" -> Upstream: "${openRouterModel}"`);
+
     // System prompt for Zyra - GTIS Cybersecurity AI Engine
     const systemPrompt = {
       role: 'system',
@@ -164,7 +168,7 @@ Format every response in clean Markdown. Start directly with the answer, no fill
 
     // RAG Retrieval: inject relevant document chunks into Zyra's context ──
     // If the user has uploaded documents in this chat, fetch chunks from MongoDB,
-    // ask stealth/space-bunny-alpha which ones are relevant, and prepend only
+    // ask retriever model (deepseek/deepseek-v4.1-flash) which ones are relevant, and prepend only
     // those to the newest user message so Zyra answers from the document.
     try {
       if (process.env.MONGODB_URI) {
@@ -182,9 +186,9 @@ Format every response in clean Markdown. Start directly with the answer, no fill
           .toArray();
 
         if (storedChunks.length > 0) {
-          console.log(`RAG: Found ${storedChunks.length} document chunks for chat ${activeChatId}`);
+          console.log(`[RAG PIPELINE] 📄 Found ${storedChunks.length} document chunks for chat ${activeChatId}`);
 
-          // Ask stealth/space-bunny-alpha to pick the most relevant chunks
+          // Ask retriever model to pick the most relevant chunks
           let userQuestion = getText(messages[messages.length - 1]?.content);
           if (userQuestion.includes('\n\n[Attached ')) {
             userQuestion = userQuestion.split('\n\n[Attached ')[0].trim();
@@ -215,16 +219,21 @@ Format every response in clean Markdown. Start directly with the answer, no fill
               };
             }
 
-            console.log(`RAG: Injected ${relevantChunks.length} relevant chunks into Zyra's context`);
+            console.log(`[RAG PIPELINE] 💉 Injected ${relevantChunks.length} relevant chunks into context`);
           } else {
-            console.log('RAG: Retriever found no relevant chunks for this query — proceeding without document context');
+            console.log('[RAG PIPELINE] ℹ️ Retriever found no relevant chunks for this query — proceeding without document context');
           }
+        } else {
+          console.log(`[RAG PIPELINE] ℹ️ No stored document chunks for chat ${activeChatId}`);
         }
       }
     } catch (ragErr) {
       // RAG is non-blocking — if it fails, Zyra still answers normally
-      console.warn('RAG retrieval failed (non-fatal):', ragErr.message);
+      console.warn('[RAG PIPELINE] ⚠️ Retrieval failed (non-fatal):', ragErr.message);
     }
+
+    console.log(`[MAIN LLM WORK] 🚀 Generating response with model: "${openRouterModel}" (stream: true)`);
+    console.log(`====================================================\n`);
 
     // Bound the upstream call: undici fetch has no default timeout, so a DNS/network
     // stall against openrouter.ai would hang this request forever
@@ -246,9 +255,11 @@ Format every response in clean Markdown. Start directly with the answer, no fill
 
     if (!response.ok) {
       const errText = await response.text();
-      console.error('API Error:', errText);
+      console.error(`[MAIN LLM WORK] ❌ API Error (${response.status}) on model "${openRouterModel}":`, errText);
       return NextResponse.json({ error: `API Error (${response.status}): ${errText}` }, { status: response.status });
     }
+
+    console.log(`[MAIN LLM WORK] ⚡ Response stream opened successfully from model "${openRouterModel}"`);
 
     return new Response(response.body, {
       headers: {

@@ -107,7 +107,16 @@ export default function ChatInterface({ user, onLogout, onBackToLanding }) {
     });
     setChatsError(null);
     try {
-      const { data: { session } } = await supabase.auth.getSession();
+      // Ensure fresh Supabase JWT before making requests
+      let { data: { session } } = await supabase.auth.getSession();
+      const isExpired = session?.expires_at && session.expires_at * 1000 < Date.now() + 30000;
+      if (!session?.access_token || isExpired) {
+        const { data: refreshData } = await supabase.auth.refreshSession();
+        if (refreshData?.session) {
+          session = refreshData.session;
+        }
+      }
+
       const headers = session?.access_token
         ? { Authorization: `Bearer ${session.access_token}` }
         : {};
@@ -125,8 +134,27 @@ export default function ChatInterface({ user, onLogout, onBackToLanding }) {
         loadedChatRef.current.add(initialTargetId);
       }
 
-      const [listRes, msgsRes] = await Promise.all([listReq, msgsReq || Promise.resolve(null)]);
-      if (!listRes.ok) throw new Error(`Chat list request failed (HTTP ${listRes.status})`);
+      let [listRes, msgsRes] = await Promise.all([listReq, msgsReq || Promise.resolve(null)]);
+
+      // If token expired right at request time, retry once with an explicit refresh
+      if (listRes.status === 401) {
+        const { data: refreshData } = await supabase.auth.refreshSession();
+        if (refreshData?.session?.access_token) {
+          const freshHeaders = { Authorization: `Bearer ${refreshData.session.access_token}` };
+          const retryListReq = fetch('/api/chat-history', { headers: freshHeaders });
+          const retryMsgsReq = initialTargetId
+            ? fetch(`/api/chat-history?chatId=${encodeURIComponent(initialTargetId)}`, { headers: freshHeaders })
+            : null;
+          [listRes, msgsRes] = await Promise.all([retryListReq, retryMsgsReq || Promise.resolve(null)]);
+        }
+      }
+
+      if (!listRes.ok) {
+        if (listRes.status === 401) {
+          throw new Error('Your session expired. Please sign out and sign back in.');
+        }
+        throw new Error(`Chat list request failed (HTTP ${listRes.status})`);
+      }
       
       const data = await listRes.json();
       let initialMessagesData = null;

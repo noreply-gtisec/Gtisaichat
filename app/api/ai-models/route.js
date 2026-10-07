@@ -1,8 +1,10 @@
 import { NextResponse } from 'next/server';
 
+export const dynamic = 'force-dynamic';
+
 export async function GET() {
   const customModels = [
-    { id: 'stealth/space-bunny-alpha', name: 'Zyra', provider: 'GTIS' },
+    { id: 'nvidia/nemotron-3.5-lightning:free', name: 'NVIDIA: Nemotron 3.5 Lightning (Free)', provider: 'NVIDIA' },
     { id: 'openai/gpt-6-luna-pro', name: 'OpenAI: GPT-6 Luna Pro', provider: 'OpenAI' },
     { id: 'openai/gpt-6-luna', name: 'OpenAI: GPT-6 Luna', provider: 'OpenAI' },
     { id: 'deepseek/deepseek-v4.1-flash', name: 'DeepSeek: DeepSeek V4.1 Flash', provider: 'DeepSeek' },
@@ -12,5 +14,12 @@ export async function GET() {
     { id: 'inclusionai/ling-3.0-flash-vl', name: 'inclusionAI: Ling 3.0 Flash VL', provider: 'inclusionAI' }
   ];
 
-  return NextResponse.json({ models: customModels });
+  return NextResponse.json(
+    { models: customModels },
+    {
+      headers: {
+        'Cache-Control': 'no-store, max-age=0',
+      },
+    }
+  );
 }

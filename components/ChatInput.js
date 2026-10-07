@@ -57,7 +57,7 @@ export default function ChatInput({ onSendMessage, isStreaming, onStopStream }) 
     const isImage = file.type.startsWith('image/');
     const isPdf = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
     const isBinaryDoc = isPdf || file.name.toLowerCase().endsWith('.doc') || file.name.toLowerCase().endsWith('.docx');
-    
+
     let dataUrl = null;
     let textContent = null;
     let pageCount = null;
@@ -154,9 +154,9 @@ export default function ChatInput({ onSendMessage, isStreaming, onStopStream }) 
 
     for (const file of files) {
       setUploadFileName(file.name);
-      
+
       const result = await uploadSingleFile(file);
-      
+
       if (result.uploadError) {
         console.warn(`Upload issue for ${file.name}:`, result.uploadError);
       }
@@ -192,17 +192,17 @@ export default function ChatInput({ onSendMessage, isStreaming, onStopStream }) 
     // Use the main chat input as the password if there are locked attachments
     if (passwordNeededAtts.length > 0 && input.trim()) {
       setUploading(true);
-      
+
       const fullInput = input.trim();
       const firstWord = fullInput.split(/\s+/)[0];
       // Try the entire input first, then try just the first word
       const possiblePasswords = [...new Set([fullInput, firstWord])];
-      
+
       for (let i = 0; i < finalAttachments.length; i++) {
         const att = finalAttachments[i];
         if ((att.errorCode === 'PASSWORD_REQUIRED' || att.errorCode === 'WRONG_PASSWORD') && att.originalFile) {
           setUploadFileName(`Unlocking ${att.name}...`);
-          
+
           let retryResult;
           for (const pwd of possiblePasswords) {
             retryResult = await uploadSingleFile(att.originalFile, pwd);
@@ -211,7 +211,7 @@ export default function ChatInput({ onSendMessage, isStreaming, onStopStream }) 
               break;
             }
           }
-          
+
           if (!retryResult.uploadError || retryResult.errorCode !== 'WRONG_PASSWORD') {
             finalAttachments[i] = {
               ...att,
@@ -231,7 +231,7 @@ export default function ChatInput({ onSendMessage, isStreaming, onStopStream }) 
       setAttachments(finalAttachments);
       setUploading(false);
       setUploadFileName('');
-      
+
       // If any attachment still needs a password, abort sending so they can try again
       const stillNeedsPassword = finalAttachments.some(a => a.errorCode === 'PASSWORD_REQUIRED' || a.errorCode === 'WRONG_PASSWORD');
       if (stillNeedsPassword) {
