@@ -6,6 +6,8 @@ import { getAuthUser } from '../../../lib/authServer';
 import { getText, trimHistory, sanitizeAttachments } from '../../../lib/history';
 import { withTiming } from '../../../lib/withTiming';
 import { retrieveRelevantChunks } from '../../../lib/chunkRetriever';
+import { retrieveChunksByVector } from '../../../lib/vectorRetriever';
+import { getEmbeddings } from '../../../lib/embeddings';
 
 // Stored user messages are plain strings — never base64/raw file bytes
 const MAX_STORED_CONTENT_CHARS = 100000;
@@ -97,17 +99,25 @@ async function handlePost(req) {
 
         // Persist RAG document chunks if the frontend sent them (first message with a file)
         if (currentUploadId) {
-          const chunkDocs = documentChunks.map((c) => ({
+          let embeddings = [];
+          try {
+            embeddings = await getEmbeddings(documentChunks.map((c) => c.text || ''), effectiveApiKey);
+          } catch (embErr) {
+            console.warn('[EMBEDDINGS] ⚠️ Failed to generate embeddings for upload (non-fatal):', embErr.message);
+          }
+
+          const chunkDocs = documentChunks.map((c, idx) => ({
             chatId: activeChatId,
             userId: userId,
             uploadId: currentUploadId,
             fileName: c.fileName || 'unknown',
             chunkIndex: c.chunkIndex,
             text: c.text,
+            embedding: embeddings[idx] || null,
             createdAt: uploadedAt, // Shared timestamp
           }));
           dbWrites.push(db.collection('document_chunks').insertMany(chunkDocs));
-          console.log(`Saved ${chunkDocs.length} document chunks for chat ${activeChatId} (Upload ID: ${currentUploadId})`);
+          console.log(`Saved ${chunkDocs.length} document chunks (with vector embeddings) for chat ${activeChatId} (Upload ID: ${currentUploadId})`);
         }
 
         // Start the MongoDB writes in the background to avoid blocking the OpenRouter fetch
@@ -188,18 +198,29 @@ Format every response in clean Markdown. Start directly with the answer, no fill
         if (storedChunks.length > 0) {
           console.log(`[RAG PIPELINE] 📄 Found ${storedChunks.length} document chunks for chat ${activeChatId}`);
 
-          // Ask retriever model to pick the most relevant chunks
           let userQuestion = getText(messages[messages.length - 1]?.content);
           if (userQuestion.includes('\n\n[Attached ')) {
             userQuestion = userQuestion.split('\n\n[Attached ')[0].trim();
           }
 
-          const relevantChunks = await retrieveRelevantChunks(
+          // 1. Perform high-performance MongoDB Atlas Vector Search (sub-50ms)
+          let relevantChunks = await retrieveChunksByVector(
             userQuestion,
-            storedChunks,
+            activeChatId,
             effectiveApiKey,
-            latestUploadId
+            10
           );
+
+          // 2. If vector search returned no results, gracefully fall back to LLM chunk retriever
+          if (!relevantChunks || relevantChunks.length === 0) {
+            console.log(`[RAG PIPELINE] ℹ️ Vector search returned 0 results, evaluating via LLM chunk retriever`);
+            relevantChunks = await retrieveRelevantChunks(
+              userQuestion,
+              storedChunks,
+              effectiveApiKey,
+              latestUploadId
+            );
+          }
 
           if (relevantChunks.length > 0) {
             // Build the grounded context block
