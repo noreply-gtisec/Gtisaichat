@@ -3,7 +3,7 @@ import clientPromise from '../../../lib/mongodb';
 import { getAuthUser } from '../../../lib/authServer';
 import { withTiming } from '../../../lib/withTiming';
 
-const PAGE_SIZE = 20;
+const PAGE_SIZE = 2000;
 
 // Heavy fields never leave the database: full extracted document text and
 // any legacy base64 payloads stay server-side.
